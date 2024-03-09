@@ -101,7 +101,7 @@ class GroupconfigCommand(UserCommandBase):
                 feedback = "无效数值"
         elif msg_str.startswith(".mode"):
             if arg_num >= 1:
-                feed_back = self.switch_mode(meta.group_id,arg_list[0])
+                feedback = self.switch_mode(meta.group_id,arg_list[0])
         elif arg_list[0] == "set":
             if arg_num == 3:
                 if arg_list[2] in ["真","是","开","true","yes","on"]:
