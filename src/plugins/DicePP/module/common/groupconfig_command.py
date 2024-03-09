@@ -188,7 +188,7 @@ class GroupconfigCommand(UserCommandBase):
             self.set_group_config(group_id,"query_database","NECHRONICA")
             return "已切换至永夜后日谈模式（默认10面骰点，查询数据库使用NECHRONICA.db（如果有））"
         else:
-            return "可选模式：DND、COC、PF2E、YGO（除了dnd其实功能都不是很完善）"
+            return "可选模式：pf1、coc、pf2、dnd5e、dnd3r、后日谈（除了dnd其实功能都不是很完善）"
 
     def set_group_config(self, group_id: str, name: str, data: Any) -> None:
         self.bot.data_manager.set_data(DC_GROUPCONFIG, [group_id,name],data)
