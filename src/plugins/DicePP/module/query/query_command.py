@@ -24,6 +24,7 @@ from module.query.query_database import CONNECTED_QUERY_DATABASES, DATABASE_CURS
 
 LOC_QUERY_RESULT = "query_result"
 LOC_QUERY_SINGLE_RESULT = "query_single_result"
+LOC_QUERY_SINGLE_RESULT_NOBOOK = "query_single_result_nobook"
 LOC_QUERY_MULTI_RESULT = "query_multi_result"
 LOC_QUERY_MULTI_RESULT_ITEM = "query_multi_result_item"
 LOC_QUERY_MULTI_RESULT_PAGE = "query_multi_result_page"
@@ -33,12 +34,9 @@ LOC_QUERY_MULTI_RESULT_CATALOGUE = "query_multi_result_catalogue"
 LOC_QUERY_NO_RESULT = "query_no_result"
 LOC_QUERY_TOO_MUCH_RESULT = "query_too_much_result"
 LOC_QUERY_KEY_NUM_EXCEED = "query_key_num_exceed"
-LOC_QUERY_CELL_BOOK = "query_cell_book"
-LOC_QUERY_CELL_REDIRECT = "query_cell_redirect"
 
 CFG_QUERY_ENABLE = "query_enable"
 CFG_QUERY_DATA_PATH = "query_data_path"
-CFG_QUERY_PRIVATE_DATABASE = "query_private_database"
 
 QUERY_ITEM_FIELD_DESC_DEFAULT_LEN = 20  # 默认用前多少个字符作为默认Description
 QUERY_SPLIT_LINE_LEN = 20  # 默认如何分割过长查询文本
@@ -54,12 +52,11 @@ RECORD_CLEAN_FREQ = 50  # 每隔多少次查询指令尝试清理一次查询记
 QUERY_DELETE_MAGICWORD = "DELETE"  # 删除查询条目必须回复的密文
 
 class QueryData:
-    def __init__(self,data_str: List[str],redirect_by: str = "",database: str = "DND5E"):
+    def __init__(self,data_str: List[str],redirect_by: str = ""):
         """单条被查询的数据"""
         self.original_data = data_str
         self.hash_word = self.original_data[0]+"#"+self.original_data[2]+"#"+self.original_data[3]
         self.redirect_by = redirect_by
-        self.database = database
 
     def data_extend(self):
         self.data_name = self.original_data[0]
@@ -327,7 +324,10 @@ class QueryCommand(UserCommandBase):
         reg_loc(LOC_QUERY_RESULT, "{result}", "查询成功时返回的内容, result为single_result或multi_result")
         reg_loc(LOC_QUERY_SINGLE_RESULT, "{keyword} {en_keyword}{tag}\n{content}{book}{redirect}",
                 "查询找到唯一条目, keyword: 条目名称, en_keyword: 条目英文名, content: 词条内容"
-                ", book: 来源*, redirect: 重定向自*, tag: 换行+标签*  (*如果有则显示, 没有则忽略)")
+                ", book: 换行+来源*, redirect: 换行+重定向自*, tag: 换行+标签*  (*如果有则显示, 没有则忽略)")
+        reg_loc(LOC_QUERY_SINGLE_RESULT_NOBOOK, "{keyword} {en_keyword}{tag}\n{content}{redirect}",
+                "查询找到唯一条目，且没有来源的回复, keyword: 条目名称, en_keyword: 条目英文名, content: 词条内容"
+                ", redirect: 换行+重定向自*, tag: 换行+标签*  (*如果有则显示, 没有则忽略)")
         reg_loc(LOC_QUERY_MULTI_RESULT_CATALOGUE, "请选择一个分类",
                 "查询找到多个条目时选择分类的文本提示")
         reg_loc(LOC_QUERY_MULTI_RESULT_PAGE, "{page_cur}/{page_total}页, -上一页/下一页+",
@@ -338,14 +338,9 @@ class QueryCommand(UserCommandBase):
         reg_loc(LOC_QUERY_TOO_MUCH_RESULT, "查询到过多内容...", "查询到过多内容时的提示")
         reg_loc(LOC_QUERY_KEY_NUM_EXCEED, "关键词数量上限{key_num}个",
                 "用户查询时使用过多关键字时的提示 {key_num}为关键字数量上限")
-        reg_loc(LOC_QUERY_CELL_BOOK, "\n来源：{book}",
-                "来源展示格式，book: 来源*")
-        reg_loc(LOC_QUERY_CELL_REDIRECT, "\n重定向自：{redirect}",
-                "重定向展示格式，redirect: 重定向自*")
 
         bot.cfg_helper.register_config(CFG_QUERY_ENABLE, "1", "查询指令开关")
-        bot.cfg_helper.register_config(CFG_QUERY_DATA_PATH, "./QueryData", "查询指令的数据来源，已弃用，请勿修改")
-        bot.cfg_helper.register_config(CFG_QUERY_PRIVATE_DATABASE, "DND5E", "查询指令私聊时默认使用的数据库，群聊使用数据库以群配置为准")
+        bot.cfg_helper.register_config(CFG_QUERY_DATA_PATH, "./QueryData", "查询指令的数据来源, .代表Data文件夹")
         #已弃用，请使用mode_command那边的CFG。
 
     def delay_init(self) -> List[str]:
@@ -366,6 +361,7 @@ class QueryCommand(UserCommandBase):
         mode: Optional[Literal["query", "search", "select", "flip_page", "editing", "new", "feedback", "redirect"]] = None
         arg_str: str = ""
         show_mode: int = 0
+        admin: bool = (meta.user_id in self.bot.cfg_helper.get_config(CFG_MASTER)) or (meta.user_id in self.bot.cfg_helper.get_config(CFG_ADMIN))
 
         # 响应交互查询指令
         port = MessagePort(meta.group_id, meta.user_id)
@@ -380,7 +376,7 @@ class QueryCommand(UserCommandBase):
                             if not record.data[0].data_name and not record.data[0].data_name_en:
                                 mode, arg_str = "feedback", "查询条目的名称或英文不能为空！"
                             else:
-                                database = record.data[0].database
+                                database = self.bot.data_manager.get_data(DC_GROUPCONFIG,[meta.group_id,"query_database"],default_val="DND5E")
                                 self.record_dict[port].edit_commit(CONNECTED_QUERY_DATABASES[database],DATABASE_CURSOR[database])
                                 del self.record_dict[port]
                                 mode, arg_str = "feedback", "已结束本次编辑并保存"
@@ -391,7 +387,7 @@ class QueryCommand(UserCommandBase):
                             should_proc = True
                         elif msg_word == QUERY_DELETE_MAGICWORD:  # 删除条目
                             if not record.edit_new:
-                                database = record.data[0].database
+                                database = self.bot.data_manager.get_data(DC_GROUPCONFIG,[meta.group_id,"query_database"],default_val="DND5E")
                                 self.record_dict[port].delete(CONNECTED_QUERY_DATABASES[database],DATABASE_CURSOR[database])
                                 del self.record_dict[port]
                                 mode, arg_str = "feedback", "接收到密文，已删除该条目"
@@ -441,7 +437,7 @@ class QueryCommand(UserCommandBase):
             if not should_proc and msg_str.startswith(f".{key}"):
                 should_proc, mode, arg_str = True, "database", msg_str[1 + len(key):].strip()
         
-        if meta.permission >= 3:# 需要3级权限（群管理/骰主）才能编辑资料库
+        if admin:
             if mode == "redirect":
                 if arg_str.startswith("删除"):
                     arg_str = arg_str[2:].strip()
@@ -512,8 +508,8 @@ class QueryCommand(UserCommandBase):
             database = self.bot.data_manager.get_data(DC_GROUPCONFIG,[meta.group_id,"query_database"],default_val="DND5E")
         else:
             port = PrivateMessagePort(meta.user_id)
-            # 私聊使用默认查询数据库
-            database = self.bot.cfg_helper.get_config(CFG_QUERY_PRIVATE_DATABASE)[0]
+            # 默认查询DND5E数据库
+            database = "DND5E"
         source_port = MessagePort(meta.group_id, meta.user_id)
         mode: Literal["query", "search", "select", "flip_page", "editing", "new", "feedback", "redirect"] = hint[0]
         arg_str: str = hint[1]
@@ -608,7 +604,7 @@ class QueryCommand(UserCommandBase):
                 index += 1
                 if index >= 8:
                     break
-            query_data: QueryData = QueryData(data,database=database)
+            query_data: QueryData = QueryData(data)
             query_data.data_extend()
             self.record_dict[source_port] = QueryRecord([query_data],database,get_current_date_raw(), 1)
             self.record_dict[source_port].mode = show_mode
@@ -1120,7 +1116,7 @@ class QueryCommand(UserCommandBase):
         #print(sql_condition)
         cursor = query_sqlcur.execute(sql_search_command_prefix + sql_condition + sql_command_suffix)
         for _data in cursor:
-            query_result.append(QueryData(_data,database=database))
+            query_result.append(QueryData(_data))
             result_length += 1
             if result_length > MAX_QUERY_ITEM_NUM:
                 raise QueryError("匹配条目过多，无法查询")
@@ -1149,7 +1145,7 @@ class QueryCommand(UserCommandBase):
                         sql_condition = self.generate_search_conditions(sql_condition_list)
                         cursor = query_sqlcur.execute(sql_search_command_prefix + sql_condition+ sql_command_suffix)
                         for _data in cursor:
-                            query_result.append(QueryData(_data,_redirect[0],database))
+                            query_result.append(QueryData(_data,_redirect[0]))
                             result_length += 1
                             if result_length > MAX_QUERY_ITEM_NUM:
                                 raise QueryError("匹配条目过多，无法查询")
@@ -1286,17 +1282,27 @@ class QueryCommand(UserCommandBase):
         # 最基本的单条目返回文本
         item_content = item.data_content if item.data_content else "[内容为空，等待热心小编补充]"
         item_tag = "\n" + item.data_tag if (item.data_tag and not item.data_tag.startswith("/")) else ""
-        item_book = self.format_loc(LOC_QUERY_CELL_BOOK, book=item.data_from) if item.data_from else ""
-        item_redirect = self.format_loc(LOC_QUERY_CELL_REDIRECT, redirect=item.redirect_by) if item.redirect_by else ""
-        return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
+        if item.data_from:
+            item_book = item.data_from 
+            item_redirect = "\n重定向自: " + item.redirect_by if item.redirect_by else ""
+            return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
+        else:
+            item_book = ""
+            item_redirect = "\n重定向自: " + item.redirect_by if item.redirect_by else ""
+            return self.format_loc(LOC_QUERY_SINGLE_RESULT_NOBOOK, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, redirect=item_redirect)
 
     def format_item_redirects_feedback(self, item: QueryData) -> str:
         # 最基本的单条目返回文本
         item_content = item.data_content if item.data_content else "[内容为空，等待热心小编补充]"
         item_tag = "\n" + item.data_tag if (item.data_tag and not item.data_tag.startswith("/")) else ""
-        item_book = self.format_loc(LOC_QUERY_CELL_BOOK, book=item.data_from) if item.data_from else ""
-        item_redirect = self.format_loc(LOC_QUERY_CELL_REDIRECT, redirect=item.redirect_by) if item.redirect_by else ""
-        return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
+        if item.data_from:
+            item_book = item.data_from 
+            item_redirect = "\n重定向自: " + item.redirect_by if item.redirect_by else ""
+            return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
+        else:
+            item_book = ""
+            item_redirect = "\n重定向自: " + item.redirect_by if item.redirect_by else ""
+            return self.format_loc(LOC_QUERY_SINGLE_RESULT_NOBOOK, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, redirect=item_redirect)
 
     @staticmethod
     def format_items_list_feedback(items: List[QueryData],start_index: int = 0):
