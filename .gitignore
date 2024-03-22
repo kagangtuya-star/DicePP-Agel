@@ -148,6 +148,7 @@ dmypy.json
 
 # DicePP
 src/plugins/DicePP/Data/
+src/plugins/DicePP/module/misc/log_command.py
 
 # Poetry
 poetry.lock
