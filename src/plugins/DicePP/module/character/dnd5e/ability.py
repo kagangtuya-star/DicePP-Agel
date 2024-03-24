@@ -17,7 +17,7 @@ assert ability_num == 6
 
 # 技能
 skill_list = ["运动",
-              "体操", "巧手", "隐匿", "先攻",
+              "特技", "巧手", "隐匿", "先攻",
               "奥秘", "历史", "调查", "自然", "宗教",
               "驯兽", "洞悉", "医药", "察觉", "求生",
               "欺瞒", "威吓", "表演", "游说", ]
@@ -26,7 +26,7 @@ assert skill_num == 19
 
 skill_parent_dict = {
     "运动": "力量",
-    "体操": "敏捷", "巧手": "敏捷", "隐匿": "敏捷", "先攻": "敏捷",
+    "特技": "敏捷", "巧手": "敏捷", "隐匿": "敏捷", "先攻": "敏捷",
     "奥秘": "智力", "历史": "智力", "调查": "智力", "自然": "智力", "宗教": "智力",
     "驯兽": "感知", "洞悉": "感知", "医药": "感知", "察觉": "感知", "求生": "感知",
     "欺瞒": "魅力", "威吓": "魅力", "表演": "魅力", "游说": "魅力",
@@ -35,7 +35,7 @@ skill_parent_dict = {
 assert len(skill_parent_dict) == skill_num
 assert sum([1 for v in skill_parent_dict.values() if v not in ability_list]) == 0
 skill_synonym_dict = {
-    "特技": "体操", "妙手": "巧手", "潜行": "隐匿", "隐蔽": "隐匿", "隐秘": "隐匿", "躲藏": "隐匿",
+    "体操": "特技", "妙手": "巧手", "潜行": "隐匿", "隐蔽": "隐匿", "隐秘": "隐匿", "躲藏": "隐匿",
     "驯养": "驯兽", "驯服": "驯兽", "医疗": "医药", "医术": "医药", "观察": "察觉", "生存": "求生",
     "欺骗": "欺瞒", "欺诈": "欺瞒", "哄骗": "欺瞒", "唬骗": "欺瞒", "威胁": "威吓", "说服": "游说"}
 assert sum([1 for v in skill_synonym_dict.values() if v not in skill_list]) == 0
@@ -70,8 +70,9 @@ assert len(check_item_list) == len(check_item_index_dict) == check_item_num
 # 可额外加值条目
 saving_all_key = "豁免"
 attack_all_key = "攻击"
-ext_item_list = check_item_list + [saving_all_key, attack_all_key]
-ext_item_num = check_item_num + 2
+ability_all_key = "属性"
+ext_item_list = check_item_list + [saving_all_key, attack_all_key, ability_all_key]
+ext_item_num = check_item_num + 3
 
 ext_item_index_dict = dict(list((k, i) for i, k in enumerate(ext_item_list)))
 assert len(ext_item_list) == len(ext_item_index_dict) == ext_item_num
@@ -223,6 +224,7 @@ class AbilityInfo(JsonObject):
         is_skill: bool = check_name in skill_list  # 计算技能检定时 会 叠加基础属性的额外加值与优劣势
         is_saving: bool = check_name in saving_list  # 计算豁免检定时 不会 叠加基础属性的额外加值与优劣势
         is_attack: bool = check_name in attack_list  # 计算攻击检定时 不会 叠加基础属性的额外加值与优劣势
+        is_ability: bool = check_name in ability_list  # 计算攻击检定时 不会 叠加基础属性的额外加值与优劣势
 
         check_index = check_item_index_dict[check_name]
         parent_index = -1
@@ -266,6 +268,12 @@ class AbilityInfo(JsonObject):
             ext_str += self.check_ext[all_index]
         if is_attack:
             all_index = ext_item_index_dict[attack_all_key]
+            ext_str += self.check_ext[all_index]
+        if is_skill:
+            all_index = ext_item_index_dict[ability_all_key]
+            ext_str += self.check_ext[all_index]
+        if is_ability:
+            all_index = ext_item_index_dict[ability_all_key]
             ext_str += self.check_ext[all_index]
         if ext_str:
             hint_str += f"额外加值:{ext_str} "
