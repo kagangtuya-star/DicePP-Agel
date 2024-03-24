@@ -236,7 +236,7 @@ def gen_template_char() -> DNDCharInfo:
     char_info.ability_info.ability = [10, 15, 12, 13, 8, 11]
     char_info.ability_info.check_prof[check_item_index_dict["敏捷攻击"]] = 1
     char_info.ability_info.check_prof[check_item_index_dict["敏捷豁免"]] = 1
-    char_info.ability_info.check_prof[check_item_index_dict["体操"]] = 1
+    char_info.ability_info.check_prof[check_item_index_dict["特技"]] = 1
     char_info.ability_info.check_prof[check_item_index_dict["隐匿"]] = 2
 
     char_info.ability_info.check_adv[ext_item_index_dict["隐匿"]] = 1
