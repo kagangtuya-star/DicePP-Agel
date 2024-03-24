@@ -33,9 +33,12 @@ LOC_QUERY_MULTI_RESULT_CATALOGUE = "query_multi_result_catalogue"
 LOC_QUERY_NO_RESULT = "query_no_result"
 LOC_QUERY_TOO_MUCH_RESULT = "query_too_much_result"
 LOC_QUERY_KEY_NUM_EXCEED = "query_key_num_exceed"
+LOC_QUERY_CELL_BOOK = "query_cell_book"
+LOC_QUERY_CELL_REDIRECT = "query_cell_redirect"
 
 CFG_QUERY_ENABLE = "query_enable"
 CFG_QUERY_DATA_PATH = "query_data_path"
+CFG_QUERY_PRIVATE_DATABASE = "query_private_database"
 
 QUERY_ITEM_FIELD_DESC_DEFAULT_LEN = 20  # 默认用前多少个字符作为默认Description
 QUERY_SPLIT_LINE_LEN = 20  # 默认如何分割过长查询文本
@@ -51,11 +54,12 @@ RECORD_CLEAN_FREQ = 50  # 每隔多少次查询指令尝试清理一次查询记
 QUERY_DELETE_MAGICWORD = "DELETE"  # 删除查询条目必须回复的密文
 
 class QueryData:
-    def __init__(self,data_str: List[str],redirect_by: str = ""):
+    def __init__(self,data_str: List[str],redirect_by: str = "",database: str = "DND5E"):
         """单条被查询的数据"""
         self.original_data = data_str
         self.hash_word = self.original_data[0]+"#"+self.original_data[2]+"#"+self.original_data[3]
         self.redirect_by = redirect_by
+        self.database = database
 
     def data_extend(self):
         self.data_name = self.original_data[0]
@@ -321,16 +325,11 @@ class QueryCommand(UserCommandBase):
 
         reg_loc = bot.loc_helper.register_loc_text
         reg_loc(LOC_QUERY_RESULT, "{result}", "查询成功时返回的内容, result为single_result或multi_result")
-        reg_loc(LOC_QUERY_SINGLE_RESULT, "{keyword}: {tag}\n{content}{book}{redirect}",
-                "查询找到唯一条目, keyword: 主关键字, content: 词条内容"
-                ", book: 换行+来源*, redirect: 换行+重定向自*, tag: 标签*, syn: 换行+同义词*  (*如果有则显示, 没有则忽略)")
-        reg_loc(LOC_QUERY_MULTI_RESULT, "{multi_results}",
-                f"查询找到多个条目, multi_results由多行{LOC_QUERY_MULTI_RESULT_ITEM}构成")
+        reg_loc(LOC_QUERY_SINGLE_RESULT, "{keyword} {en_keyword}{tag}\n{content}{book}{redirect}",
+                "查询找到唯一条目, keyword: 条目名称, en_keyword: 条目英文名, content: 词条内容"
+                ", book: 来源*, redirect: 重定向自*, tag: 换行+标签*  (*如果有则显示, 没有则忽略)")
         reg_loc(LOC_QUERY_MULTI_RESULT_CATALOGUE, "请选择一个分类",
                 "查询找到多个条目时选择分类的文本提示")
-        reg_loc(LOC_QUERY_MULTI_RESULT_ITEM, "{keyword}: {description}{tag}{book}",
-                "查询找到多个条目时单个条目的描述, keyword: 主关键字, description: 简短描述"
-                ", book: 来源*, tag: 标签*, syn: 同义词*  (*如果有则显示, 没有则忽略)")
         reg_loc(LOC_QUERY_MULTI_RESULT_PAGE, "{page_cur}/{page_total}页, -上一页/下一页+",
                 "搜索结果出现多页时提示, {page_cur}表示当前页, {page_total}表示总页数")
         reg_loc(LOC_QUERY_MULTI_RESULT_PAGE_UNDERFLOW, "已经是最前一页了!", "用户尝试在第一页往前翻页时的提醒")
@@ -339,9 +338,15 @@ class QueryCommand(UserCommandBase):
         reg_loc(LOC_QUERY_TOO_MUCH_RESULT, "查询到过多内容...", "查询到过多内容时的提示")
         reg_loc(LOC_QUERY_KEY_NUM_EXCEED, "关键词数量上限{key_num}个",
                 "用户查询时使用过多关键字时的提示 {key_num}为关键字数量上限")
+        reg_loc(LOC_QUERY_CELL_BOOK, "\n来源：{book}",
+                "来源展示格式，book: 来源*")
+        reg_loc(LOC_QUERY_CELL_REDIRECT, "\n重定向自：{redirect}",
+                "重定向展示格式，redirect: 重定向自*")
 
         bot.cfg_helper.register_config(CFG_QUERY_ENABLE, "1", "查询指令开关")
-        bot.cfg_helper.register_config(CFG_QUERY_DATA_PATH, "./QueryData", "查询指令的数据来源, .代表Data文件夹")
+        bot.cfg_helper.register_config(CFG_QUERY_DATA_PATH, "./QueryData", "查询指令的数据来源，已弃用，请勿修改")
+        bot.cfg_helper.register_config(CFG_QUERY_PRIVATE_DATABASE, "DND5E", "查询指令私聊时默认使用的数据库，群聊使用数据库以群配置为准")
+        #已弃用，请使用mode_command那边的CFG。
 
     def delay_init(self) -> List[str]:
         # 从本地文件中读取数据库
@@ -361,7 +366,6 @@ class QueryCommand(UserCommandBase):
         mode: Optional[Literal["query", "search", "select", "flip_page", "editing", "new", "feedback", "redirect"]] = None
         arg_str: str = ""
         show_mode: int = 0
-        admin: bool = (meta.user_id in self.bot.cfg_helper.get_config(CFG_MASTER)) or (meta.user_id in self.bot.cfg_helper.get_config(CFG_ADMIN))
 
         # 响应交互查询指令
         port = MessagePort(meta.group_id, meta.user_id)
@@ -376,7 +380,7 @@ class QueryCommand(UserCommandBase):
                             if not record.data[0].data_name and not record.data[0].data_name_en:
                                 mode, arg_str = "feedback", "查询条目的名称或英文不能为空！"
                             else:
-                                database = self.bot.data_manager.get_data(DC_GROUPCONFIG,[meta.group_id,"query_database"],default_val="DND5E")
+                                database = record.data[0].database
                                 self.record_dict[port].edit_commit(CONNECTED_QUERY_DATABASES[database],DATABASE_CURSOR[database])
                                 del self.record_dict[port]
                                 mode, arg_str = "feedback", "已结束本次编辑并保存"
@@ -387,7 +391,7 @@ class QueryCommand(UserCommandBase):
                             should_proc = True
                         elif msg_word == QUERY_DELETE_MAGICWORD:  # 删除条目
                             if not record.edit_new:
-                                database = self.bot.data_manager.get_data(DC_GROUPCONFIG,[meta.group_id,"query_database"],default_val="DND5E")
+                                database = record.data[0].database
                                 self.record_dict[port].delete(CONNECTED_QUERY_DATABASES[database],DATABASE_CURSOR[database])
                                 del self.record_dict[port]
                                 mode, arg_str = "feedback", "接收到密文，已删除该条目"
@@ -437,7 +441,7 @@ class QueryCommand(UserCommandBase):
             if not should_proc and msg_str.startswith(f".{key}"):
                 should_proc, mode, arg_str = True, "database", msg_str[1 + len(key):].strip()
         
-        if admin:
+        if meta.permission >= 3:# 需要3级权限（群管理/骰主）才能编辑资料库
             if mode == "redirect":
                 if arg_str.startswith("删除"):
                     arg_str = arg_str[2:].strip()
@@ -469,16 +473,34 @@ class QueryCommand(UserCommandBase):
             elif mode == "database":
                 if arg_str.startswith("加载"):
                     arg_str = arg_str[2:].strip()
-                    show_mode = 9 # 加载模式
+                    show_mode = 1 # 加载模式
                 elif arg_str.startswith("load"):
                     arg_str = arg_str[4:].strip()
-                    show_mode = 9 # 加载模式
-                if arg_str.startswith("卸载"):
+                    show_mode = 1 # 加载模式
+                elif arg_str.startswith("卸载"):
                     arg_str = arg_str[2:].strip()
-                    show_mode = 8 # 卸载模式
+                    show_mode = 2 # 卸载模式
                 elif arg_str.startswith("disload"):
                     arg_str = arg_str[7:].strip()
-                    show_mode = 8 # 卸载模式
+                    show_mode = 2 # 卸载模式
+                elif arg_str.startswith("创建"):
+                    arg_str = arg_str[2:].strip()
+                    show_mode = 3 # 创建模式
+                elif arg_str.startswith("create"):
+                    arg_str = arg_str[6:].strip()
+                    show_mode = 3 # 创建模式
+                elif arg_str.startswith("导入"):
+                    arg_str = arg_str[2:].strip()
+                    show_mode = 4 # 导入模式
+                elif arg_str.startswith("import"):
+                    arg_str = arg_str[6:].strip()
+                    show_mode = 4 # 导入模式
+                elif arg_str.startswith("列表"):
+                    arg_str = arg_str[2:].strip()
+                    show_mode = 5 # 显示模式
+                elif arg_str.startswith("list"):
+                    arg_str = arg_str[4:].strip()
+                    show_mode = 5 # 显示模式
         assert (not should_proc) or mode
         hint = (mode, arg_str, show_mode)
         return should_proc, should_pass, hint
@@ -490,8 +512,8 @@ class QueryCommand(UserCommandBase):
             database = self.bot.data_manager.get_data(DC_GROUPCONFIG,[meta.group_id,"query_database"],default_val="DND5E")
         else:
             port = PrivateMessagePort(meta.user_id)
-            # 默认查询DND5E数据库
-            database = "DND5E"
+            # 私聊使用默认查询数据库
+            database = self.bot.cfg_helper.get_config(CFG_QUERY_PRIVATE_DATABASE)[0]
         source_port = MessagePort(meta.group_id, meta.user_id)
         mode: Literal["query", "search", "select", "flip_page", "editing", "new", "feedback", "redirect"] = hint[0]
         arg_str: str = hint[1]
@@ -586,7 +608,7 @@ class QueryCommand(UserCommandBase):
                 index += 1
                 if index >= 8:
                     break
-            query_data: QueryData = QueryData(data)
+            query_data: QueryData = QueryData(data,database=database)
             query_data.data_extend()
             self.record_dict[source_port] = QueryRecord([query_data],database,get_current_date_raw(), 1)
             self.record_dict[source_port].mode = show_mode
@@ -652,41 +674,91 @@ class QueryCommand(UserCommandBase):
                     "。重定向删除 [名称] 删除一个重定向"\
                     "。重定向 [名称/对象] 查阅已有的重定向"
         elif mode == "database":
-            if show_mode == 9:# 加载数据库
-                arg_str = arg_str.strip().upper()
-                if arg_str in CONNECTED_QUERY_DATABASES.keys():
-                    feedback = f"{arg_str}.db 已经被加载过了，请先 。数据库卸载 {arg_str} 并手动删除数据库文件（若需要）再执行此指令。"
+            if arg_str.strip() == "" and show_mode != 5:
+                show_mode = 0
+            if show_mode == 1:# 加载数据库
+                database = arg_str.strip().upper()
+                database_file_path = DATA_PATH+"/QueryData/"+database+".db"
+                if database in CONNECTED_QUERY_DATABASES.keys():
+                    feedback = f"{database}.db 已经被加载过了，无需再次加载。"
                 else:
-                    database_file_path = DATA_PATH+"/QueryData/"+arg_str+".db"
-                    load_dir = DATA_PATH+"/ExcelData/"+arg_str
-                    if os.path.isdir(load_dir):
-                        if not os.path.exists(database_file_path):
-                            create_query_database(database_file_path)
-                        feedback = connect_query_database(database_file_path)
-                        try:
-                            for inner_path,inner_dirs,file_names in os.walk(load_dir):
-                                for file_name in file_names:
-                                    if file_name.endswith(".xlsx"):
-                                        inner_full_path = os.path.join(inner_path, file_name)
-                                        load_data_from_xlsx_to_sqlite(inner_full_path, database_file_path,0) # 0 旧版梨骰数据
-                            feedback += f"已读取 ExcelData/{arg_str} -> {arg_str}.db 。"
-                        except FileNotFoundError as e:  # 文件夹不存在
-                            feedback += f"读取 ExcelData/{arg_str} 时遇到错误: {e}"
+                    feedback = connect_query_database(database_file_path)
+                    if len(feedback) == 0:
+                        feedback = f"已载入 {database}.db。"
+            elif show_mode == 2:# 卸载数据库
+                database = arg_str.strip().upper()
+                database_file_path = DATA_PATH+"/QueryData/"+database+".db"
+                if database in CONNECTED_QUERY_DATABASES.keys():
+                    disconnect_query_database(database)
+                    feedback = f"已卸载 {database}.db，您现在可以手动删除对应数据库来防止重启后被再次自动加载。"
+                elif os.path.exists(database_file_path):
+                    feedback = f"未加载 {database}.db。"
+                else:
+                    feedback = f"未找到文件{database}.db。"
+            elif show_mode == 3:# 创建数据库
+                database = arg_str.strip().upper()
+                database_file_path = DATA_PATH+"/QueryData/"+database+".db"
+                if database in CONNECTED_QUERY_DATABASES.keys():
+                    feedback = f" {database}.db 已经处于加载状态，无法再次创建。"
+                elif os.path.exists(database_file_path):
+                    feedback = f"文件{database}.db 已存在，请使用 。数据库加载 进行加载。"
+                else:
+                    create_query_database(database_file_path)
+                    feedback = connect_query_database(database_file_path)
+                    if len(feedback) == 0:
+                        feedback = f"已创建并载入{database}.db。"
+            elif show_mode == 4:# 导入数据库
+                arg_list = arg_str.split(" ")
+                if len(arg_list) != 3:
+                    feedback = f"请输入正确的指令。"
+                else:
+                    database = arg_list[0].strip().upper()
+                    xlsx_mode = arg_list[1].strip()
+                    file_path = arg_list[2].strip()
+                    if xlsx_mode in ["0","1","2"]:
+                        database_file_path = DATA_PATH+"/QueryData/"+database+".db"
+                        if database in CONNECTED_QUERY_DATABASES.keys():
+                            load_dir = DATA_PATH+"/ExcelData/"+file_path
+                            if os.path.isdir(load_dir):
+                                try:
+                                    for inner_path,inner_dirs,file_names in os.walk(load_dir):
+                                        for file_name in file_names:
+                                            if file_name.endswith(".xlsx"):
+                                                inner_full_path = os.path.join(inner_path, file_name)
+                                                load_data_from_xlsx_to_sqlite(inner_full_path, database_file_path,int(xlsx_mode)) # 0 旧版梨骰数据
+                                    feedback += f"已将 ExcelData/{file_path}下的全部xlsx文件载入至 {database}.db。"
+                                except FileNotFoundError as e:  # 文件夹不存在
+                                    feedback += f"读取 ExcelData/{file_path} 时遇到错误: {e}"
+                            else:
+                                file_full_path = DATA_PATH+"/ExcelData/"+file_path
+                                if os.path.exists(file_full_path):
+                                    try:
+                                        load_data_from_xlsx_to_sqlite(file_full_path, database_file_path,int(xlsx_mode)) # 0 旧版梨骰数据
+                                        feedback += f"已将 ExcelData/{file_path}文件载入至 {database}.db。"
+                                    except FileNotFoundError as e:  # 文件夹不存在
+                                        feedback += f"读取 ExcelData/{file_path} 时遇到错误: {e}"
+                                elif os.path.exists(file_full_path+".xlsx"):
+                                    file_full_path = file_full_path+".xlsx"
+                                    try:
+                                        load_data_from_xlsx_to_sqlite(file_full_path, database_file_path,int(xlsx_mode)) # 0 旧版梨骰数据
+                                        feedback += f"已将 ExcelData/{file_path}文件载入至 {database}.db。"
+                                    except FileNotFoundError as e:  # 文件夹不存在
+                                        feedback += f"读取 ExcelData/{file_path} 时遇到错误: {e}"
+                                else:
+                                    feedback += f"你输入的 ExcelData/{file_path} 既不是文件夹也不是xlsx文件"
+                        else:
+                            feedback = f"未加载 {database}.db，请先创建或加载后再进行此操作。"
                     else:
-                        feedback = f"未找到可读取的文件夹，请将文件放置在 ExcelData/{arg_str} 中（必须大写）。"
-            elif show_mode == 8:# 卸载数据库
-                arg_str = arg_str.strip().upper()
-                if arg_str in CONNECTED_QUERY_DATABASES.keys():
-                    disconnect_query_database(arg_str)
-                    feedback = f"已卸载 {arg_str.upper()}.db ，您现在可以手动删除对应数据库来防止重启后被再次加载。"
-                else:
-                    feedback = f"未找到数据库 {arg_str.upper()}.db 。"
-            elif len(arg_str) > 0:
-                feedback = "已加载以下数据：\n  -"+"\n  -".join(CONNECTED_QUERY_DATABASES.keys())
+                        feedback = f"请输入正确的模式值：\n0:旧版梨骰查询资料表\n1:新式梨骰查询表\n2:新式梨骰私设表"
+            elif show_mode == 5:# 显示数据库
+                feedback = "目前已加载以下数据库（不包含私设数据库）：\n  -"+"\n  -".join([key for key in CONNECTED_QUERY_DATABASES.keys() if not key.startswith("HB")])
             else:
                 feedback = "数据库编辑"\
-                    "。重定向加载 [名称] 加载数据库"\
-                    "。重定向卸载 [名称] 卸载数据库"
+                    "。数据库创建 [名称] 创建一个新的数据库\n"\
+                    "。数据库列表 查看全部已加载的数据库\n"\
+                    "。数据库加载 [名称] 加载一个已有数据库\n"\
+                    "。数据库卸载 [名称] 卸载一个已有数据库\n"\
+                    "。数据库导入 [名称] [模式] [文件相对路径(需后缀)] \n将ExcelData的一个xlsx文件/文件夹中的全部xlsx导入数据库，模式0为旧版梨骰查询资料表，1为新式梨骰查询表，2为新式梨骰私设表"
         elif mode == "feedback":
             feedback = arg_str
         else:
@@ -1048,7 +1120,7 @@ class QueryCommand(UserCommandBase):
         #print(sql_condition)
         cursor = query_sqlcur.execute(sql_search_command_prefix + sql_condition + sql_command_suffix)
         for _data in cursor:
-            query_result.append(QueryData(_data))
+            query_result.append(QueryData(_data,database=database))
             result_length += 1
             if result_length > MAX_QUERY_ITEM_NUM:
                 raise QueryError("匹配条目过多，无法查询")
@@ -1077,7 +1149,7 @@ class QueryCommand(UserCommandBase):
                         sql_condition = self.generate_search_conditions(sql_condition_list)
                         cursor = query_sqlcur.execute(sql_search_command_prefix + sql_condition+ sql_command_suffix)
                         for _data in cursor:
-                            query_result.append(QueryData(_data,_redirect[0]))
+                            query_result.append(QueryData(_data,_redirect[0],database))
                             result_length += 1
                             if result_length > MAX_QUERY_ITEM_NUM:
                                 raise QueryError("匹配条目过多，无法查询")
@@ -1214,16 +1286,16 @@ class QueryCommand(UserCommandBase):
         # 最基本的单条目返回文本
         item_content = item.data_content if item.data_content else "[内容为空，等待热心小编补充]"
         item_tag = "\n" + item.data_tag if (item.data_tag and not item.data_tag.startswith("/")) else ""
-        item_book = "\n来源: " + item.data_from if item.data_from else ""
-        item_redirect = "\n重定向自: " + item.redirect_by if item.redirect_by else ""
+        item_book = self.format_loc(LOC_QUERY_CELL_BOOK, book=item.data_from) if item.data_from else ""
+        item_redirect = self.format_loc(LOC_QUERY_CELL_REDIRECT, redirect=item.redirect_by) if item.redirect_by else ""
         return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
 
     def format_item_redirects_feedback(self, item: QueryData) -> str:
         # 最基本的单条目返回文本
         item_content = item.data_content if item.data_content else "[内容为空，等待热心小编补充]"
         item_tag = "\n" + item.data_tag if (item.data_tag and not item.data_tag.startswith("/")) else ""
-        item_book = "\n来源: " + item.data_from if item.data_from else ""
-        item_redirect = "\n重定向自: " + item.redirect_by if item.redirect_by else ""
+        item_book = self.format_loc(LOC_QUERY_CELL_BOOK, book=item.data_from) if item.data_from else ""
+        item_redirect = self.format_loc(LOC_QUERY_CELL_REDIRECT, redirect=item.redirect_by) if item.redirect_by else ""
         return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
 
     @staticmethod
