@@ -68,13 +68,13 @@ class ModeCommand(UserCommandBase):
                     if str(row[0].value) == "mode":
                         self.mode_field = [str(cell.value) for cell in row]
                     else:
-                        self.mode_dict[row[0]] = [cell for cell in row[1:]]
+                        self.mode_dict[str(row[0].value)] = [str(cell.value) for cell in row[1:]]
             else:
                 ws = wb.create_sheet(bot_id)
                 ws.append(DEFAULT_FIELD)
-                for row in DEFAULT_TABLE:
-                    ws.append(row)
-                    self.mode_dict[row[0]] = [cell for cell in row[1:]]
+                for str_row in DEFAULT_TABLE:
+                    ws.append(str_row)
+                    self.mode_dict[str_row[0]] = [str_cell for str_cell in str_row[1:]]
                 edited = True
             init_info.append("已载入模式文件。")
         else:
@@ -82,9 +82,9 @@ class ModeCommand(UserCommandBase):
             ws = wb.active
             ws.title = bot_id
             ws.append(DEFAULT_FIELD)
-            for row in DEFAULT_TABLE:
-                ws.append(row)
-                self.mode_dict[row[0]] = [cell for cell in row[1:]]
+            for str_row in DEFAULT_TABLE:
+                ws.append(str_row)
+                self.mode_dict[str_row[0]] = [str_cell for str_cell in str_row[1:]]
             edited = True
             init_info.append("已创建模式文件。")
         if edited:
