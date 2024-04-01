@@ -451,7 +451,8 @@ class Bot:
             comment: str = data.comment.strip()
             return not passwords or comment in passwords
         elif isinstance(data, JoinGroupRequestData):
-            return None
+            should_allow: int = int(self.cfg_helper.get_config(CFG_GROUP_INVITE)[0])
+            return should_allow == 1
         elif isinstance(data, InviteGroupRequestData):
             should_allow: int = int(self.cfg_helper.get_config(CFG_GROUP_INVITE)[0])
             return should_allow == 1

@@ -8,3 +8,5 @@ try:
     from .log_command import LogCommand
 except:
     a = 1+1 # 不加载了
+
+from .test_command import NewTestCommand

@@ -199,17 +199,40 @@ async def handle_request(bot: NoneBot, event: RequestEvent):
         data = FriendRequestData(str(event.user_id), event.comment)
     elif event.request_type == "group":
         if event.sub_type == "add":
-            data = JoinGroupRequestData(str(event.user_id), str(event.group_id), str(event.comment))
+            data = JoinGroupRequestData(str(event.user_id), str(event.group_id))
         elif event.sub_type == "invite":
-            data = InviteGroupRequestData(str(event.user_id), str(event.group_id), event.comment)
+            data = InviteGroupRequestData(str(event.user_id), str(event.group_id))
 
     # 处理请求
     if data:
         approve: Optional[bool] = all_bots[bot.self_id].process_request(data)
         if approve:
-            await event.approve(bot)
+            if event.request_type == "friend":
+                await bot.set_friend_add_request(flag=event.flag, approve=True, remark="")
+            elif event.request_type == "group":
+                await bot.set_group_add_request(flag=event.flag, sub_type=event.sub_type, approve=True)
+        else:
+            if event.request_type == "friend":
+                await bot.set_friend_add_request(flag=event.flag, approve=False)
+            elif event.request_type == "group":
+                await bot.set_group_add_request(flag=event.flag, sub_type=event.sub_type, approve=False, reason="已自动拒绝该申请。")
+        '''
+        # 已无法使用
+        if approve:
+            try:
+                await event.approve(bot)
+                print(f"[Proxy Request] 已接受{type(event)}请求。")
+            except:
+                print(f"[Proxy Request] 接受{type(event)}请求时出错。")
         elif (approve is not None) and (not approve):
-            await event.reject(bot)
+            try:
+                await event.reject(bot)
+                print(f"[Proxy Request] 已拒绝{type(event)}请求。")
+            except:
+                print(f"[Proxy Request] 拒绝{type(event)}请求时出错。")
+        else:
+            print(f"[Proxy Request] 已忽略{type(event)}请求。")
+        '''
 
 
 # 全局Driver

@@ -97,7 +97,7 @@ class BotSendFileCommand(BotCommandBase):
         self.targets = targets
 
     def __str__(self):
-        s = f"Bot \033[0;37m{self.bot_id}\033[0m send message \033[0;33m发送文件\033[0m to "
+        s = f"Bot \033[0;37m{self.bot_id}\033[0m 发送文件 \033[0;33m{self.display_name}（{self.file}）\033[0m to "
         s += '\n\t'.join([str(target) for target in self.targets])
         return s
         

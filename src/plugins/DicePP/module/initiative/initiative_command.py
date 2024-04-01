@@ -247,7 +247,10 @@ class InitiativeCommand(UserCommandBase):
                         name_dict[n + chr(ord("A") + i)] = roll_exp.get_result()
                 else:
                     # 获取先攻结果
-                    name_dict[n] = roll_exp.get_result()
+                    try:
+                        name_dict[n] = roll_exp.get_result()
+                    except RollDiceError as e:  # 无效的掷骰表达式
+                        return [BotSendMsgCommand(self.bot.account, e.info, [port])]
 
             result_dict: Dict[str, Tuple[int, str]] = dict()
             for name, res in name_dict.items():
