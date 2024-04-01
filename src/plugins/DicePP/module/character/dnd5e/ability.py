@@ -72,8 +72,11 @@ saving_all_key = "豁免"
 attack_all_key = "攻击"
 ability_all_key = "属性"
 Jack_of_All_Trades = "万事通"
-ext_item_list = check_item_list + [saving_all_key, attack_all_key, ability_all_key, Jack_of_All_Trades]
-ext_item_num = check_item_num + 4
+Reliable_Talent = "可靠才能"
+Indomitable_Might = "不屈勇武"
+ext_item = [saving_all_key, attack_all_key, ability_all_key, Jack_of_All_Trades, Reliable_Talent, Indomitable_Might]
+ext_item_list = check_item_list + ext_item
+ext_item_num = check_item_num + len(ext_item)
 
 ext_item_index_dict = dict(list((k, i) for i, k in enumerate(ext_item_list)))
 assert len(ext_item_list) == len(ext_item_index_dict) == ext_item_num
@@ -250,11 +253,15 @@ class AbilityInfo(JsonObject):
         prof_bonus_str: list = ""
         prof_bonus = self.check_prof[check_index] * self.get_prof_bonus()
         JoAT_applied = True if self.check_ext[ext_item_index_dict[Jack_of_All_Trades]] not in ['','+0',None] and(is_ability or is_skill) else False
+        ReTa_applied = True if self.check_ext[ext_item_index_dict[Reliable_Talent]] not in ['','+0',None] and(is_ability or is_skill) and self.check_prof[check_index] != 0 else False
+        InMi_applied = True if self.check_ext[ext_item_index_dict[Indomitable_Might]] not in ['','+0',None] and(is_ability or is_skill) and (ability_list[parent_index] == '力量' or check_name == '力量') else False
         if self.check_prof[check_index] == 0 and not JoAT_applied:
             hint_str += f"无熟练加值 "
+            
         elif self.check_prof[check_index] == 0 and JoAT_applied:
             prof_bonus = self.get_prof_bonus()//2
             hint_str += f"万事通加值:{prof_bonus} "
+            
         elif self.check_prof[check_index] == 1:
             hint_str += f"熟练加值:{prof_bonus} "
         else:
@@ -333,15 +340,31 @@ class AbilityInfo(JsonObject):
                 roll_exp = "D20劣势"
         else:
             roll_exp = "D20"
-
+        if ReTa_applied and InMi_applied:
+            if self.ability[0] > 10 :
+                ReTa_applied = False
+            else:
+                InMi_applied = False
+        if ReTa_applied:
+            min_roll = 10
+        elif InMi_applied:
+            min_roll = self.ability[0]
+        else:
+            min_roll = 0
+        roll_exp = roll_exp + 'M' + str(min_roll) if min_roll != 0 else roll_exp
         roll_exp = f"{roll_exp}{prof_bonus_str}{ability_modifier_str}{ext_str}{mod_str}"
         try:
             roll_result = exec_roll_exp(roll_exp)
             result_str = roll_result.get_complete_result()
             result_val = roll_result.get_val()
+            dice_result = int(roll_result.get_info().lstrip('[').split("]")[0].split('→')[0]) if roll_result.get_info().count('→') != 0 else int(roll_result.get_info().lstrip('[').split("]")[0])
         except RollDiceError as e:
             raise AssertionError(f"Unexpected Code: {roll_exp}->{e.info}")
-
+        if ReTa_applied and dice_result < min_roll:
+            hint_str += ' 可靠才能已适用'
+        elif InMi_applied and dice_result < min_roll:
+            hint_str += ' 不屈勇武已适用'
+        hint_str = hint_str.strip()
         return hint_str, result_str, result_val
 
     def get_char_info(self) -> str:
