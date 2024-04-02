@@ -357,7 +357,7 @@ class AbilityInfo(JsonObject):
             roll_result = exec_roll_exp(roll_exp)
             result_str = roll_result.get_complete_result()
             result_val = roll_result.get_val()
-            dice_result = int(roll_result.get_info().lstrip('[').split("]")[0].split('→')[0]) if roll_result.get_info().count('→') != 0 else int(roll_result.get_info().lstrip('[').split("]")[0])
+            dice_result = int(roll_result.get_info().split('[')[1].split("]")[0].split('→')[0]) if roll_result.get_info().count('→') != 0 else int(roll_result.get_info().split('[')[1].split("]")[0])
         except RollDiceError as e:
             raise AssertionError(f"Unexpected Code: {roll_exp}->{e.info}")
         if ReTa_applied and dice_result < min_roll:
