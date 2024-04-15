@@ -15,7 +15,7 @@ class FriendRequestData(RequestData):
 
 
 class JoinGroupRequestData(RequestData):
-    """加群请求 - 自己是管理员"""
+    """其他人的加群请求（骰娘为管理员限定）"""
 
     def __init__(self, user_id, group_id):
         self.user_id: str = user_id
@@ -24,7 +24,7 @@ class JoinGroupRequestData(RequestData):
 
 
 class InviteGroupRequestData(RequestData):
-    """邀请加群请求"""
+    """邀请骰娘加群请求"""
 
     def __init__(self, user_id, group_id):
         self.user_id: str = user_id

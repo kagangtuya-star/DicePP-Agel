@@ -7,6 +7,6 @@ from .statistics_cmd import StatisticsCommand
 try:
     from .log_command import LogCommand
 except:
-    a = 1+1 # 不加载了
+    print("Log系统未安装，已取消加载。")
 
 from .test_command import NewTestCommand

@@ -181,7 +181,10 @@ async def handle_notice(bot: NoneBot, event: NoticeEvent):
     # 构建data
     data: Optional[NoticeData] = None
     if event.notice_type == "group_increase":
-        data = GroupIncreaseNoticeData(str(event.user_id), str(event.group_id), str(event.operator_id))
+        try:
+            data = GroupIncreaseNoticeData(str(event.user_id), str(event.group_id), str(event.operator_id))
+        except:
+            data = GroupIncreaseNoticeData(str(event.user_id), str(event.group_id), "0")
     elif event.notice_type == "friend_add":
         data = FriendAddNoticeData(str(event.user_id))
 
@@ -214,7 +217,7 @@ async def handle_request(bot: NoneBot, event: RequestEvent):
         else:
             if event.request_type == "friend":
                 await bot.set_friend_add_request(flag=event.flag, approve=False)
-            elif event.request_type == "group":
+            elif event.request_type == "group" and event.sub_type == "invite":
                 await bot.set_group_add_request(flag=event.flag, sub_type=event.sub_type, approve=False, reason="已自动拒绝该申请。")
         '''
         # 已无法使用
