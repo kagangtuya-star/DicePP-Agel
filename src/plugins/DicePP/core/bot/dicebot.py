@@ -18,7 +18,6 @@ from core.communication import NoticeData, FriendAddNoticeData, GroupIncreaseNot
 from core.communication import GroupInfo
 from core.data import DC_META, DC_NICKNAME, DC_MACRO, DC_VARIABLE, DC_USER_DATA, DC_GROUP_DATA,\
     DCK_META_STAT, DCK_USER_STAT, DCK_GROUP_STAT
-from module.common import DC_GROUPCONFIG
 from core.data import DataManager, DataManagerError
 from core.statistics import MetaStatInfo, GroupStatInfo, UserStatInfo
 
