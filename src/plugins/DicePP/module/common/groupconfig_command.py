@@ -35,8 +35,7 @@ DEFAULT_GROUP_CONFIG = {
     "homebrew_database" : False,
     #娱乐内容
     "cool_jrrp" : True,
-    "chat" : True,
-    "april_fool" : False
+    "chat" : True
 }
 
 # 存放群配置数据
@@ -62,6 +61,15 @@ class GroupconfigCommand(UserCommandBase):
         bot.loc_helper.register_loc_text(LOC_GROUP_DICE_SET, "本群的默认掷骰面数已改为{var}面。", "修改群内默认掷骰骰面的回复，var：具体骰面")
         bot.loc_helper.register_loc_text(LOC_GROUP_CHAT_ON, "本群的自定义聊天功能已开启。", "开启聊天功能的回复")
         bot.loc_helper.register_loc_text(LOC_GROUP_CHAT_OFF, "本群的自定义聊天功能已关闭。", "关闭聊天功能的回复")
+    
+    def delay_init(self) -> List[str]:
+        init_info: List[str] = []
+        #初始化默认数据
+        for name in DEFAULT_GROUP_CONFIG.keys():
+            self.bot.data_manager.set_data(DC_GROUPCONFIG, ["default",name],DEFAULT_GROUP_CONFIG[name])
+        #定义一些可配置的默认数据
+        self.bot.data_manager.set_data(DC_GROUPCONFIG, ["default","mode"],self.bot.cfg_helper.get_config("mode_default")[0]) #设定默认模式
+        return init_info
 
     def can_process_msg(self, msg_str: str, meta: MessageMetaData) -> Tuple[bool, bool, Any]:
         should_proc: bool = True
@@ -98,8 +106,9 @@ class GroupconfigCommand(UserCommandBase):
             arg_list = []
             arg_num = 0
         else:
-            arg_list = [arg.split() for arg in hint[0].split(" ") if arg.split() != ""]
+            arg_list = [arg for arg in hint[0].split(" ") if arg != ""]
             arg_num = len(arg_list)
+        show_mode = hint[1]
         feedback: str = ""
         set_format: str = ""
 
@@ -112,35 +121,41 @@ class GroupconfigCommand(UserCommandBase):
                 var_type = type(DEFAULT_GROUP_CONFIG[arg_list[1]])
                 # 检测输入类型
                 if arg_list[2] in ["真","是","开","开启","true","yes","on"]:
-                    self.set_group_config(meta.group_id,arg_list[1],True)
-                    var_str = "True"
+                    #self.set_group_config(meta.group_id,arg_list[1],True)
+                    var_data = True
+                    var_str = "开启(True)"
                 elif arg_list[2] in ["假","否","关","关闭","false","no","off"]:
-                    self.set_group_config(meta.group_id,arg_list[1],False)
-                    var_str = "False"
+                    #self.set_group_config(meta.group_id,arg_list[1],False)
+                    var_data = False
+                    var_str = "关闭(False)"
                 elif arg_list[2].isdigit():
-                    self.set_group_config(meta.group_id,arg_list[1],int(arg_list[2]))
+                    #self.set_group_config(meta.group_id,arg_list[1],int(arg_list[2]))
+                    var_data = int(arg_list[2])
                     var_str = arg_list[2]
                 else:
-                    self.set_group_config(meta.group_id,arg_list[1],arg_list[2])
+                    var_data = arg_list[2]
                     var_str = arg_list[2]
-                # 检测输入类型是否合规
-                if not isinstance(arg_list[1],var_type):
+                # 检测输入类型是否合规，修改设置
+                if isinstance(var_data,var_type):
+                    self.set_group_config(meta.group_id,arg_list[1],var_data)
+                    #特定简写改数据指令的回复会使用到特定loc文本
+                    if show_mode == "chat": #对话开关
+                        if var_data:
+                            feedback = self.bot.loc_helper.format_loc_text(LOC_GROUP_CHAT_ON)
+                        else:
+                            feedback = self.bot.loc_helper.format_loc_text(LOC_GROUP_CHAT_OFF)
+                    elif show_mode == "dice": #掷骰开关
+                        feedback = self.bot.loc_helper.format_loc_text(LOC_GROUP_DICE_SET,var=var_str)
+                    else:
+                        feedback = self.bot.loc_helper.format_loc_text(LOC_GROUP_CONFIG_SET,var_name=arg_list[1],var=var_str)
+                else:
                     feedback = "违规的数据类型。"
-                else:
-                    # 修改设置
-                    self.set_group_config(meta.group_id,arg_list[1],True)
-                    # 特定简写指令的回复会使用到loc文本，不然默认使用此处的
-                    #if show_mode == "chat"
-                    #elif show_mode == "dice"
-                    #feedback = "已将本群默认骰设置为 {var} 面!"
-                    self.bot.loc_helper.format_loc_text(LOC_FUNC_DISABLE, func=self.readable_name)
-                    feedback = "已将群配置 "+ arg_list[1] + " 的值改为 " + arg_list[2] + "。"
             else:
                 feedback = "参数错误"
         elif arg_list[0] == "get":
             if arg_num == 2:
                 feedback = str(self.get_group_config(meta.group_id,arg_list[1]))
-                feedback = "群配置 "+ arg_list[1] + " 的值为 " + feedback + "。"
+                feedback = self.bot.loc_helper.format_loc_text(LOC_GROUP_CONFIG_SET,var_name=arg_list[1],var=feedback)
         elif arg_list[0] == "show":
             config_dict = self.bot.data_manager.get_data(DC_GROUPCONFIG, [meta.group_id],default_val="")
             feedback = "当前已配置的群配置: "

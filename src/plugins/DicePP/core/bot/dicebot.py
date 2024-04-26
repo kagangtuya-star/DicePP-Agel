@@ -24,7 +24,7 @@ from core.statistics import MetaStatInfo, GroupStatInfo, UserStatInfo
 from core.bot.macro import BotMacro, MACRO_PARSE_LIMIT
 from core.bot.variable import BotVariable
 
-NICKNAME_ERROR = "UNDEF_NAME"
+NICKNAME_ERROR = "无名氏"
 
 
 # noinspection PyBroadException
@@ -520,19 +520,26 @@ class Bot:
             user_id: 账号
             group_id: 群号, 为空代表默认
         """
-        if not group_id:
-            group_id = "default"
+        nick_name = ""
 
-        try:
-            nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, group_id])  # 使用用户在群内的昵称
-        except DataManagerError:
+        if group_id:
             try:
-                nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "default"])  # 使用用户定义的默认昵称
+                nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, group_id])  # 使用用户在群内设定的昵称
             except DataManagerError:
-                try:
-                    nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "origin"])  # 使用用户本身的用户名
-                except DataManagerError:
-                    nickname = NICKNAME_ERROR
+                nickname = ""
+        
+        try:
+            nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "default"])  # 使用用户定义的默认昵称
+        except DataManagerError:
+            nickname = ""
+        
+        try:
+            nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "origin"])  # 使用用户本身的用户名
+        except DataManagerError:
+            nickname = ""
+        
+        if nickname == "":
+            nickname = NICKNAME_ERROR # 使用出错情况下的用户名
         return nickname
 
     def update_nickname(self, user_id: str, group_id: str = "", nickname: str = ""):

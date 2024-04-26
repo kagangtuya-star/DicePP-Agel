@@ -78,7 +78,7 @@ class ActivateCommand(UserCommandBase):
 
         if msg_str.startswith(".bot"):
             arg_str = msg_str[4:].strip()
-            if meta.to_me and meta.group_id and (arg_str == "on" or arg_str == "off"):
+            if meta.to_me and meta.group_id and (arg_str == "on" or arg_str == "off" or arg_str == "dismiss"):
                 return True, should_pass, arg_str
             if not arg_str and not at_other:
                 return True, should_pass, "show"
@@ -111,11 +111,13 @@ class ActivateCommand(UserCommandBase):
                 activate_data = get_default_activate_data(False)
                 self.bot.data_manager.set_data(DC_ACTIVATE, [meta.group_id], activate_data)
                 feedback = self.format_loc(LOC_BOT_OFF)
-            else:  # mode == "dismiss":
+            elif mode == "dismiss":
                 feedback = self.format_loc(LOC_BOT_DISMISS)
                 bot_commands.append(BotSendMsgCommand(self.bot.account, feedback, [port]))
                 bot_commands.append(BotLeaveGroupCommand(self.bot.account, meta.group_id))
                 return bot_commands  # 需要先发消息再退出
+            else:
+                feedback = "未知指令"
 
         bot_commands.append(BotSendMsgCommand(self.bot.account, feedback, [port]))
         return bot_commands

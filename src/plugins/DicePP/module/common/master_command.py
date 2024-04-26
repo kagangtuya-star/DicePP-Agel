@@ -7,10 +7,11 @@ from typing import List, Tuple, Any
 from core.bot import Bot
 from core.command.const import *
 from core.command import UserCommandBase, custom_user_command
-from core.command import BotCommandBase, BotSendMsgCommand
+from core.command import BotCommandBase, BotSendMsgCommand, BotLeaveGroupCommand
 from core.communication import MessageMetaData, PrivateMessagePort, GroupMessagePort
 from core.config import CFG_MASTER, CFG_ADMIN
 from core.data import custom_data_chunk, DataChunkBase
+from module.common.activate_command import get_default_activate_data, DC_ACTIVATE
 
 LOC_REBOOT = "master_reboot"
 LOC_SEND_MASTER = "master_send_to_master"
@@ -82,6 +83,40 @@ class MasterCommand(UserCommandBase):
                     feedback = "目标必须为user或group"
             else:
                 feedback = f"非法输入\n使用方法: {self.get_help('m send', meta)}"
+        elif arg_str.startswith("bot"):
+            arg_str = arg_str[3:].strip()
+            if arg_str.startswith("on"):
+                arg_str = arg_str[2:].strip()
+                if arg_str.isdigit():
+                    target = int(arg_str)
+                    target_port = GroupMessagePort(target)
+                    feedback = f"已尝试远程为指定群聊{target}开启骰娘"
+                    self.bot.data_manager.set_data(DC_ACTIVATE, [target], get_default_activate_data(True))
+                    command_list.append(BotSendMsgCommand(self.bot.account, "（骰主已远程为本群开启骰娘。）", [target_port]))
+                else:
+                    feedback = "目标必须为一个群聊的QQ号"
+            elif arg_str.startswith("off"):
+                arg_str = arg_str[3:].strip()
+                if arg_str.isdigit():
+                    target = int(arg_str)
+                    target_port = GroupMessagePort(target)
+                    feedback = f"已尝试远程为指定群聊{target}关闭骰娘"
+                    self.bot.data_manager.set_data(DC_ACTIVATE, [target], get_default_activate_data(False))
+                    command_list.append(BotSendMsgCommand(self.bot.account, "（骰主已远程为本群关闭骰娘。）", [target_port]))
+                else:
+                    feedback = "目标必须为一个群聊的QQ号"
+            elif arg_str.startswith("dismiss"):
+                arg_str = arg_str[7:].strip()
+                if arg_str.isdigit():
+                    target = int(arg_str)
+                    target_port = GroupMessagePort(target)
+                    feedback = f"已尝试让骰娘退出指定群聊{target}"
+                    command_list.append(BotSendMsgCommand(self.bot.account, "骰主已远程操作骰娘退出本群。", [target_port]))
+                    command_list.append(BotLeaveGroupCommand(self.bot.account, target))
+                else:
+                    feedback = "目标必须为一个群聊的QQ号"
+            else:
+                feedback = "未知指令，目前仅可用bot on、bot off、bot dismiss。"
         elif arg_str == "update":
             async def async_task():
                 update_group_result = await self.bot.update_group_info_all()
@@ -117,12 +152,17 @@ class MasterCommand(UserCommandBase):
     def get_help(self, keyword: str, meta: MessageMetaData) -> str:
         if keyword == "m":  # help后的接着的内容
             return ".m reboot 重启骰娘" \
-                   ".m send 命令骰娘发送信息"
+                   ".m send 命令骰娘发送信息" \
+                   ".m bot off/on/dismiss 命令骰娘远程操作群聊"
         if keyword.startswith("m"):
             if keyword.endswith("reboot"):
                 return "该指令将重启DicePP进程"
             elif keyword.endswith("send"):
                 return ".m send [user/group]:[账号/群号]:[消息内容]"
+            elif keyword.endswith("bot"):
+                return ".m bot on [群号] 远程开启骰娘" \
+                       ".m bot off [群号] 远程关闭骰娘" \
+                       ".m bot dismiss [群号] 远程让骰娘尝试退群" \
         return ""
 
     def get_description(self) -> str:
