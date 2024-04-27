@@ -528,15 +528,17 @@ class Bot:
             except DataManagerError:
                 nickname = ""
         
-        try:
-            nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "default"])  # 使用用户定义的默认昵称
-        except DataManagerError:
-            nickname = ""
+        if nickname == "":
+            try:
+                nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "default"])  # 使用用户定义的默认昵称
+            except DataManagerError:
+                nickname = ""
         
-        try:
-            nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "origin"])  # 使用用户本身的用户名
-        except DataManagerError:
-            nickname = ""
+        if nickname == "":
+            try:
+                nickname = self.data_manager.get_data(DC_NICKNAME, [user_id, "origin"])  # 使用用户本身的用户名
+            except DataManagerError:
+                nickname = ""
         
         if nickname == "":
             nickname = NICKNAME_ERROR # 使用出错情况下的用户名
