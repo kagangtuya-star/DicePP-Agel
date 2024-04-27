@@ -520,7 +520,7 @@ class Bot:
             user_id: 账号
             group_id: 群号, 为空代表默认
         """
-        nick_name = ""
+        nickname = ""
 
         if group_id:
             try:
