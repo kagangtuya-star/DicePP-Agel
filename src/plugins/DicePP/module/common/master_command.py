@@ -162,7 +162,7 @@ class MasterCommand(UserCommandBase):
             elif keyword.endswith("bot"):
                 return ".m bot on [群号] 远程开启骰娘" \
                        ".m bot off [群号] 远程关闭骰娘" \
-                       ".m bot dismiss [群号] 远程让骰娘尝试退群" \
+                       ".m bot dismiss [群号] 远程让骰娘尝试退群" 
         return ""
 
     def get_description(self) -> str:
