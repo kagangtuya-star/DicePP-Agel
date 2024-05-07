@@ -11,7 +11,7 @@ from .roll_utils import RollDiceError, roll_a_dice, match_outer_parentheses, cle
 from .result import RollResult
 
 XDY_RE = "([1-9][0-9]*)?D([1-9][0-9]*)?"
-XB_RE = "([1-9][0-9]*)?B"
+XBAB_RE = "([1-9][0-9]*)?B([A][B])?"
 AVAILABLE_CHARACTER = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ.+-*/><=#()优劣势抗性易伤"
 
 class RollExpression(metaclass=abc.ABCMeta):
@@ -255,35 +255,48 @@ class RollExpressionXDYEXP(RollExpression):
         #res.exp = f"({res.exp})"
         return res
 
-class RollExpressionXB(RollExpression):
+class RollExpressionXBAB(RollExpression):
     """
-    全回合攻击的XB表达式
+    全回合攻击的-XB或+XBAB表达式
     """
     def __init__(self, exp_str: str = "5B"):
         self.exp_str = exp_str
         self.result_var = 0
         self.time_counter = 0
-        # 处理骰子部分
-        d_index = exp_str.find("B")
-        if d_index == -1:
-            raise RollDiceError(f"解析表达式时未发现XB格式: {exp_str}")
-        num_str= exp_str[:d_index]
-        
-        try:
-            self.multiply_num = int(num_str) if num_str else 5
-        except ValueError:
-            raise RollDiceError(f"XB数值错误: {exp_str}")
-        
-        if self.multiply_num <= 0 or self.multiply_num >= 100:
-            raise RollDiceError(f"XB数值错误: {exp_str}")
+        self.mode = 0 # 0 +X-YB 1 +XBAB
+        # 处理简易部分
+        if "BAB" in exp_str:
+            bab_index = exp_str.find("BAB")
+            if bab_index == -1:
+                raise RollDiceError(f"解析表达式时未发现-XB或+XBAB格式: {exp_str}")
+            num_str = exp_str[:bab_index]
+            self.mode = 1
+            try:
+                self.base_var = int(num_str) if num_str else 0
+            except ValueError:
+                raise RollDiceError(f"+XBAB数值错误: {exp_str}")
+        else: # if "B" in exp_str
+            bab_index = exp_str.find("B")
+            if bab_index == -1:
+                raise RollDiceError(f"解析表达式时未发现-XB或+XBAB格式: {exp_str}")
+            num_str = exp_str[:bab_index]
+            try:
+                self.multiply_var = int(num_str) if num_str else 5
+            except ValueError:
+                raise RollDiceError(f"-XB数值错误: {exp_str}")
+            if self.multiply_var <= 0 or self.multiply_var >= 100:
+                raise RollDiceError(f"-XB数值错误: {exp_str}")
 
     def get_result(self) -> RollResult:
         """
         生成以调用次数为准的值
         """
         res = RollResult()
-        res.val_list = [self.time_counter * self.multiply_num]
-        self.time_counter += 1
+        if self.mode == 0:
+            res.val_list = [self.time_counter * self.multiply_var]
+        else: #if mode == 1:
+            res.val_list = [max(0,self.base_var-(self.time_counter * 5))]
+        self.time_counter += 1 # 每次自己被调用，+1
         res.info = str(res.val_list[0])
         res.exp = self.exp_str
         return res
@@ -393,8 +406,8 @@ def parse_single_roll_exp(input_str: str, default_type: int = DICE_TYPE_DEFAULT)
         else:
             return RollExpressionXDY(input_str,default_type)
     # BAB逐步减值格式。XB
-    if re.match(XB_RE, input_str):
-        return RollExpressionXB(input_str)
+    if re.match(XBAB_RE, input_str):
+        return RollExpressionXBAB(input_str)
     # 特殊处理：如果是错误的例如“1地精”这种，尝试给他改正
     if "D" in input_str:
         for index in range(len(input_str), -1, -1):
@@ -402,8 +415,8 @@ def parse_single_roll_exp(input_str: str, default_type: int = DICE_TYPE_DEFAULT)
                 return RollExpressionXDY(input_str[:index],default_type)
     elif "B" in input_str:
         for index in range(len(input_str), -1, -1):
-            if re.match(XB_RE, input_str[:index]):
-                return RollExpressionXB(input_str[:index])
+            if re.match(XBAB_RE, input_str[:index]):
+                return RollExpressionXBAB(input_str[:index])
     else:
         for index in range(len(input_str), -1, -1):
             if input_str[:index].isdigit():

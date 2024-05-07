@@ -135,7 +135,12 @@ class LocalizationManager:
         """
         loc_text: LocalizationText = self.get_loc_text(key)
         if kwargs:
-            return loc_text.get().format(**kwargs)
+            try:
+                return loc_text.get().format(**kwargs)
+            except KeyError as e:
+                return loc_text.get()+"\n本地化文本出现无法识别的变量，请检查："+key
+            except:
+                return loc_text.get()+"\n本地化文本出现错误，请检查："+key
         else:
             return loc_text.get()
 

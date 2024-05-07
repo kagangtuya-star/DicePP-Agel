@@ -17,6 +17,7 @@ class InitEntity(JsonObject):
 
     def __init__(self):
         self.name: str = ""  # 先攻条目名称
+        self.compatible_name: str = ""  # 用于搜索的兼容性名称
         self.owner: str = ""  # 拥有者id, 为空代表是npc
         self.init: int = 0  # 先攻数值
 

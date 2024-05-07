@@ -4,6 +4,7 @@ import json
 from core.data import custom_data_chunk, DataChunkBase
 from core.data import JsonObject, custom_json_object
 from utils.time import get_current_date_str
+from core.communication import preprocess_msg
 
 from module.initiative.initiative_entity import InitEntity
 
@@ -84,6 +85,7 @@ class InitList(JsonObject):
 
         entity: InitEntity = InitEntity()
         entity.name = entity_name
+        entity.compatible_name = preprocess_msg(entity_name)
         entity.owner = owner_id
         entity.init = init
         self.entities.append(entity)
@@ -104,7 +106,7 @@ class InitList(JsonObject):
             entity_name: 条目名称
         """
         # 检查同名条目
-        all_index = [index for index, entity in enumerate(self.entities) if entity.name == entity_name]
+        all_index = [index for index, entity in enumerate(self.entities) if (entity.name == entity_name or entity.compatible_name == entity_name)]
         if len(all_index) == 0:
             raise InitiativeError(f"先攻列表中不存在名称为{entity_name}的条目")
         if len(all_index) > 1:
@@ -120,6 +122,15 @@ class InitList(JsonObject):
                 self.turn -= 1
         # 更新时间
         self.mod_time = get_current_date_str()
+    
+    def find_entity(self, entity_name: str) -> List[InitEntity]:
+        """
+        寻找一个先攻条目并加入到先攻列表中.
+        Args:
+            entity_name: 条目名称
+        """
+        all_entities = [entity for index, entity in enumerate(self.entities) if (entity.name == entity_name or entity.compatible_name == entity_name)]
+        return all_entities
 
 
 class InitiativeError(Exception):

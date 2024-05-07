@@ -41,11 +41,16 @@ class NicknameCommand(UserCommandBase):
     def can_process_msg(self, msg_str: str, meta: MessageMetaData) -> Tuple[bool, bool, Any]:
         should_proc: bool = msg_str.startswith(".nn")
         should_pass: bool = False
-        return should_proc, should_pass, None
+        if should_proc:
+            hint = meta.plain_msg[3:].strip()
+            return should_proc, should_pass, hint
+        else:
+            return should_proc, should_pass, None
 
     def process_msg(self, msg_str: str, meta: MessageMetaData, hint: Any) -> List[BotCommandBase]:
         # 解析语句
-        arg_str = msg_str[3:].strip()
+        #arg_str = msg_str[3:].strip()
+        arg_str = hint
         feedback: str
 
         if not arg_str:  # 重设昵称

@@ -1202,13 +1202,21 @@ class QueryCommand(UserCommandBase):
                         extra_command = command.split("|")
                         command = extra_command.pop(0)
                     extra_items = self.query_item(database, homebrew_database, command)
-                    item_lines[index] = "[ " + self.format_items_list_feedback(extra_items,len(sub_query_items)) + " ]"
+                    item_lines[index] = ""
                     # 处理专用的附加指令
                     for excmd in extra_command:
                         excmd = excmd.strip()
                         # 清理查询条目文本中的特定文本
                         if excmd.startswith("clear") and len(excmd) > 5:
-                            item_lines[index] = item_lines[index].replace(excmd[5:].strip(),"")
+                            clear_str = excmd[5:].strip()
+                            for __item in extra_items:
+                                __item.display_name = __item.display_name.replace(clear_str,"")
+                        # 无视特定内容
+                        elif excmd.startswith("ignore") and len(excmd) > 6:
+                            ignore_item_name = excmd[6:].strip()
+                            for __item in extra_items:
+                                if __item.data_name == ignore_item_name:
+                                    extra_items.remove(__item)
                         # 展示实际内容
                         elif excmd.startswith("show"):
                             word_limit = 200
@@ -1222,6 +1230,8 @@ class QueryCommand(UserCommandBase):
                                 else:
                                     new_str.append(str(len(sub_query_items) + _index) + "." + extra_items[_index].display_name + " : " + extra_items[_index].data_content.replace("\n"," "))
                             item_lines[index] = "\n".join(new_str)
+                    if item_lines[index] == "":
+                        item_lines[index] = "[ " + self.format_items_list_feedback(extra_items,len(sub_query_items)) + " ]"
                     sub_query_items += extra_items
                 except QueryError:
                     item_lines[index] = self.format_loc(LOC_QUERY_TOO_MUCH_RESULT)

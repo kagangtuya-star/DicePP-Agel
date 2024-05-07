@@ -17,7 +17,7 @@ LOC_ROLL_CHOOSE_FAILED = "roll_choose_failed"
 ROLL_OPTIONS_LIMIT = 100  # 可选择的项目上线
 
 @custom_user_command(readable_name="随机选择指令",
-                     priority=0,
+                     priority=-1,  # 要比掷骰命令前, 否则.r会覆盖.rc
                      group_only=False,
                      flag=DPP_COMMAND_FLAG_ROLL)
 class RollChooseCommand(UserCommandBase):
@@ -38,14 +38,14 @@ class RollChooseCommand(UserCommandBase):
                                          ".c指令失败时返回")
 
     def can_process_msg(self, msg_str: str, meta: MessageMetaData) -> Tuple[bool, bool, Any]:
-        should_proc: bool = msg_str.startswith(".c")
+        should_proc: bool = msg_str.startswith(".rc")
         should_pass: bool = False
         return should_proc, should_pass, None
 
     def process_msg(self, msg_str: str, meta: MessageMetaData, hint: Any) -> List[BotCommandBase]:
         # 解析掷骰语句
         port = GroupMessagePort(meta.group_id) if meta.group_id else PrivateMessagePort(meta.user_id)
-        arg_str = msg_str[2:].strip()
+        arg_str = msg_str[3:].strip()
         args = []
         choose_time = 1
         # 获取选项与次数
@@ -74,8 +74,8 @@ class RollChooseCommand(UserCommandBase):
 
 
     def get_help(self, keyword: str, meta: MessageMetaData) -> str:
-        if keyword == "c":
-            help_str = "随机选择:\n.c [选项1] [选项2] [选项3] ...\n在多个选项中随机选择其一\n.c[次数] [选项1] [选项2] [选项3] ...\n在多个选项中随机选择数个对象\n你也可以用/来分割选项"
+        if keyword == "rc":
+            help_str = "随机选择:\n.rc [选项1] [选项2] [选项3] ...\n在多个选项中随机选择其一\n.c[次数] [选项1] [选项2] [选项3] ...\n在多个选项中随机选择数个对象\n你也可以用/来分割选项"
             return help_str
         return ""
 

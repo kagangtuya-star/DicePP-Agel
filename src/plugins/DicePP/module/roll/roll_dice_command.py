@@ -128,10 +128,40 @@ class RollDiceCommand(UserCommandBase):
                     assert 0 < times <= MULTI_ROLL_LIMIT
                 except (ValueError, AssertionError):
                     times = 1
+        elif "bab" in msg_str:
+            # 需要用简易BAB计算的，必须以+NBAB的形式撰写
+            time_str = msg_str.split("bab", 1)[0]+"bab"
+            if len(time_str) > 3:
+                i = 1
+                collecter = ""
+                bab_num = 0
+                while(i <= len(time_str)):
+                    _word = time_str[-i]
+                    if _word == "-" or _word == "+" and "bab" in collecter and bab_num == 0:
+                        try:
+                            if collecter != "bab":
+                                bab_num = int(collecter[:-3])
+                            else:
+                                bab_num = 0
+                        except (ValueError, AssertionError):
+                            bab_num = 0
+                        collecter = ""
+                    else:
+                        if _word in "+-*/":
+                            collecter = ""
+                        else:
+                            collecter = _word + collecter
+                    i += 1
+                if bab_num != 0:
+                    try:
+                        times = math.ceil((bab_num-1) / 5)
+                        assert 0 < times <= MULTI_ROLL_LIMIT
+                    except (ValueError, AssertionError):
+                        times = 1
         elif "b" in msg_str:
-            # 需要用BAB计算的，必须以+N-B的形式撰写
+            # 需要用复杂BAB计算的，必须以+N-B的形式撰写
             time_str = msg_str.split("b", 1)[0]+"b"
-            if len(time_str) > 0:
+            if len(time_str) > 1:
                 i = 1
                 collecter = ""
                 b_num = 0

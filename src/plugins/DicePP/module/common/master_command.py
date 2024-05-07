@@ -71,6 +71,16 @@ class MasterCommand(UserCommandBase):
                 feedback = self.format_loc(LOC_REBOOT)
             except Exception:
                 return self.bot.handle_exception("重启时出现错误")
+        elif arg_str.startswith("reload"):
+            arg_str = arg_str[6:].strip()
+            if arg_str.startswith("local") or arg_str.startswith("本地化"):
+                self.bot.loc_helper.load_localization()
+                self.bot.loc_helper.save_localization()
+                feedback = f"已尝试重新载入本地化文件localization.xlsx"
+            elif arg_str.startswith("chat") or "聊天" in arg_str:
+                self.bot.loc_helper.load_chat()
+                self.bot.loc_helper.save_chat()
+                feedback = f"已尝试重新载入自定义聊天文件chat.xlsx"
         elif arg_str.startswith("send"):
             arg_list = arg_str[4:].split(":", 2)
             if len(arg_list) == 3:
