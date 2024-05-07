@@ -17,7 +17,7 @@ assert ability_num == 6
 
 # 技能
 skill_list = ["运动",
-              "体操", "巧手", "隐匿", "先攻",
+              "特技", "巧手", "隐匿", "先攻",
               "奥秘", "历史", "调查", "自然", "宗教",
               "驯兽", "洞悉", "医药", "察觉", "求生",
               "欺瞒", "威吓", "表演", "游说", ]
@@ -26,7 +26,7 @@ assert skill_num == 19
 
 skill_parent_dict = {
     "运动": "力量",
-    "体操": "敏捷", "巧手": "敏捷", "隐匿": "敏捷", "先攻": "敏捷",
+    "特技": "敏捷", "巧手": "敏捷", "隐匿": "敏捷", "先攻": "敏捷",
     "奥秘": "智力", "历史": "智力", "调查": "智力", "自然": "智力", "宗教": "智力",
     "驯兽": "感知", "洞悉": "感知", "医药": "感知", "察觉": "感知", "求生": "感知",
     "欺瞒": "魅力", "威吓": "魅力", "表演": "魅力", "游说": "魅力",
@@ -35,7 +35,7 @@ skill_parent_dict = {
 assert len(skill_parent_dict) == skill_num
 assert sum([1 for v in skill_parent_dict.values() if v not in ability_list]) == 0
 skill_synonym_dict = {
-    "特技": "体操", "妙手": "巧手", "潜行": "隐匿", "隐蔽": "隐匿", "隐秘": "隐匿", "躲藏": "隐匿",
+    "体操": "特技", "妙手": "巧手", "潜行": "隐匿", "隐蔽": "隐匿", "隐秘": "隐匿", "躲藏": "隐匿",
     "驯养": "驯兽", "驯服": "驯兽", "医疗": "医药", "医术": "医药", "观察": "察觉", "生存": "求生",
     "欺骗": "欺瞒", "欺诈": "欺瞒", "哄骗": "欺瞒", "唬骗": "欺瞒", "威胁": "威吓", "说服": "游说"}
 assert sum([1 for v in skill_synonym_dict.values() if v not in skill_list]) == 0
@@ -70,12 +70,16 @@ assert len(check_item_list) == len(check_item_index_dict) == check_item_num
 # 可额外加值条目
 saving_all_key = "豁免"
 attack_all_key = "攻击"
-ext_item_list = check_item_list + [saving_all_key, attack_all_key]
-ext_item_num = check_item_num + 2
+ability_all_key = "属性"
+Jack_of_All_Trades = "万事通"
+Reliable_Talent = "可靠才能"
+Indomitable_Might = "不屈勇武"
+ext_item = [saving_all_key, attack_all_key, ability_all_key, Jack_of_All_Trades, Reliable_Talent, Indomitable_Might]
+ext_item_list = check_item_list + ext_item
+ext_item_num = check_item_num + len(ext_item)
 
 ext_item_index_dict = dict(list((k, i) for i, k in enumerate(ext_item_list)))
 assert len(ext_item_list) == len(ext_item_index_dict) == ext_item_num
-
 
 @custom_json_object
 class AbilityInfo(JsonObject):
@@ -174,9 +178,13 @@ class AbilityInfo(JsonObject):
                 ext_str = ext_str[2:]
             if not ext_str:
                 continue
-
+            # 如果开头没有加号则加上加号
+            if not ext_str[0] in ["+", "-"]:
+                added_prefix = list(ext_str)
+                added_prefix = "+" + ext_str
+                ext_str = ''.join(added_prefix)
             # 校验开头
-            assert ext_str[0] in ["+", "-"], f"调整值无效: 必须以[优势/劣势]+/-开头\n{check_name}:{ext_str} "
+            assert ext_str[0] in ["+", "-"], f"调整值无效: 必须以“优势”“劣势”或“-”开头\n{check_name}:{ext_str} "
             # 校验表达式合法性
             try:
                 res = exec_roll_exp("D20" + ext_str)
@@ -213,6 +221,13 @@ class AbilityInfo(JsonObject):
             result_str: 检定的计算过程
             result_val: 检定结果
         """
+        #已录入数值列比现版本的短时，自动扩充
+        if len(self.check_ext) != len(ext_item_list):
+            target = len(ext_item_list)-len(self.check_ext)
+            countvar = 0
+            while countvar < target:
+                self.check_ext.append('')
+                countvar = countvar+1
         hint_str: str = ""
         result_str: str
         result_val: int
@@ -223,6 +238,7 @@ class AbilityInfo(JsonObject):
         is_skill: bool = check_name in skill_list  # 计算技能检定时 会 叠加基础属性的额外加值与优劣势
         is_saving: bool = check_name in saving_list  # 计算豁免检定时 不会 叠加基础属性的额外加值与优劣势
         is_attack: bool = check_name in attack_list  # 计算攻击检定时 不会 叠加基础属性的额外加值与优劣势
+        is_ability: bool = check_name in ability_list  
 
         check_index = check_item_index_dict[check_name]
         parent_index = -1
@@ -234,14 +250,23 @@ class AbilityInfo(JsonObject):
             parent_index = ext_item_index_dict[attack_parent_dict[check_name]]
 
         # 计算熟练加值
+        prof_bonus_str: list = ""
         prof_bonus = self.check_prof[check_index] * self.get_prof_bonus()
-        if self.check_prof[check_index] == 0:
+        JoAT_applied = True if self.check_ext[ext_item_index_dict[Jack_of_All_Trades]] not in ['','+0',None] and(is_ability or is_skill) else False
+        ReTa_applied = True if self.check_ext[ext_item_index_dict[Reliable_Talent]] not in ['','+0',None] and(is_ability or is_skill) and self.check_prof[check_index] != 0 else False
+        InMi_applied = True if self.check_ext[ext_item_index_dict[Indomitable_Might]] not in ['','+0',None] and(is_ability or is_skill) and (ability_list[parent_index] == '力量' or check_name == '力量') else False
+        if self.check_prof[check_index] == 0 and not JoAT_applied:
             hint_str += f"无熟练加值 "
+            
+        elif self.check_prof[check_index] == 0 and JoAT_applied:
+            prof_bonus = self.get_prof_bonus()//2
+            hint_str += f"万事通加值:{prof_bonus} "
+            
         elif self.check_prof[check_index] == 1:
             hint_str += f"熟练加值:{prof_bonus} "
         else:
             hint_str += f"熟练加值:{self.get_prof_bonus()}*{self.check_prof[check_index]} "
-        prof_bonus_str: str = ""
+            prof_bonus_str: str = ""
         if prof_bonus != 0:
             prof_bonus_str = "+" + str(prof_bonus) if prof_bonus > 0 else str(prof_bonus)
 
@@ -256,16 +281,26 @@ class AbilityInfo(JsonObject):
         ability_modifier_str: str = ""
         if ability_modifier != 0:
             ability_modifier_str = "+" + str(ability_modifier) if ability_modifier > 0 else str(ability_modifier)
-
+        
+        assert ext_item_index_dict[ability_all_key] != None
+        
         # 得到额外加值
         ext_str = self.check_ext[check_index]
-        if parent_index != -1:
-            ext_str += self.check_ext[parent_index]
         if is_saving:
             all_index = ext_item_index_dict[saving_all_key]
             ext_str += self.check_ext[all_index]
         if is_attack:
             all_index = ext_item_index_dict[attack_all_key]
+            ext_str += self.check_ext[all_index]
+        if is_skill:
+            all_index = ext_item_index_dict[ability_all_key]
+            if parent_index != -1:
+                ext_str += self.check_ext[parent_index]
+            ext_str += self.check_ext[all_index]
+        if is_ability:
+            all_index = ext_item_index_dict[ability_all_key]
+            if parent_index != -1:
+                ext_str += self.check_ext[parent_index]
             ext_str += self.check_ext[all_index]
         if ext_str:
             hint_str += f"额外加值:{ext_str} "
@@ -305,15 +340,31 @@ class AbilityInfo(JsonObject):
                 roll_exp = "D20劣势"
         else:
             roll_exp = "D20"
-
+        if ReTa_applied and InMi_applied:
+            if self.ability[0] > 10 :
+                ReTa_applied = False
+            else:
+                InMi_applied = False
+        if ReTa_applied:
+            min_roll = 10
+        elif InMi_applied:
+            min_roll = self.ability[0]
+        else:
+            min_roll = 0
+        roll_exp = roll_exp + 'M' + str(min_roll) if min_roll != 0 else roll_exp
         roll_exp = f"{roll_exp}{prof_bonus_str}{ability_modifier_str}{ext_str}{mod_str}"
         try:
             roll_result = exec_roll_exp(roll_exp)
             result_str = roll_result.get_complete_result()
             result_val = roll_result.get_val()
+            dice_result = int(roll_result.get_info().split('[')[1].split("]")[0].split('→')[0]) if roll_result.get_info().count('→') != 0 else int(roll_result.get_info().split('[')[1].split("]")[0])
         except RollDiceError as e:
             raise AssertionError(f"Unexpected Code: {roll_exp}->{e.info}")
-
+        if ReTa_applied and dice_result < min_roll:
+            hint_str += ' 可靠才能已适用'
+        elif InMi_applied and dice_result < min_roll:
+            hint_str += ' 不屈勇武已适用'
+        hint_str = hint_str.strip()
         return hint_str, result_str, result_val
 
     def get_char_info(self) -> str:
