@@ -36,7 +36,7 @@ class MasterCommand(UserCommandBase):
 
     def __init__(self, bot: Bot):
         super().__init__(bot)
-        bot.loc_helper.register_loc_text(LOC_REBOOT, "重启已完毕。", "重启完成")
+        bot.loc_helper.register_loc_text(LOC_REBOOT, "重启已开始。", "开始重启")
         bot.loc_helper.register_loc_text(LOC_SEND_MASTER,
                                          "发送消息: {msg} 至 {id} (类型:{type})",
                                          "用.m send指令发送消息时给Master的回复")

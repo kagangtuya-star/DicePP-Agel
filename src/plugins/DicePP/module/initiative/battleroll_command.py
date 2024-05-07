@@ -81,12 +81,6 @@ class BattlerollCommand(UserCommandBase):
                 should_proc = True
                 arg_str = msg_str[len(key)+1:].strip()
                 break
-        for key in ["跳过","skip"]:
-            if msg_str.startswith("."+key):
-                mode = "skip"
-                should_proc = True
-                arg_str = msg_str[len(key)+1:].strip()
-                break
         for key in ["结束","ed"]:
             if msg_str.startswith("."+key):
                 mode = "end"
@@ -246,7 +240,6 @@ class BattlerollCommand(UserCommandBase):
                             "\n.turn 或 .round 或 .轮次 或 .回合 查看当前轮次与回合"\
                             "\n.round<数值> 或 .轮次<数值> 设置轮次数值"\
                             "\n.turn<数值> 或 .轮次<数值> 设置当前进行到的回合"\
-                            "\n.skip<数量> 或 .跳过<数值> 跳过数回合"\
                             "\n.ed 或 .结束 在自己回合中宣言回合结束"
             return feedback
         return ""

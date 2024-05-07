@@ -62,7 +62,7 @@ class InitList(JsonObject):
         self.round = 1
         self.turn = 1
         self.turns_in_round = 1
-        self.first_turn = True
+        self.first_turn = True # 为True情况下会不处理一些效果
 
     def __repr__(self):
         return f"InitList({self.entities}, {self.mod_time})"
