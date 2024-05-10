@@ -44,6 +44,7 @@ def read_xlsx(path: str) -> openpyxl.Workbook:
         wb.properties.identifier = path
         return wb
     except:
+        print(f"读取{path}失败，请检查该文件是否是正确格式的表格文件。")
         return openpyxl.Workbook()
 
 
