@@ -513,10 +513,12 @@ class InitiativeCommand(UserCommandBase):
             elif match_num == 0:  # 没有同名条目, 进入模糊搜索
                 possible_res: List[str] = match_substring(name, global_list)
                 if len(possible_res) == 0:  # 还是没有结果, 提示用户
-                    feedback += self.format_loc(LOC_INIT_ENTITY_NOT_FOUND) + "\n"
+                    feedback += self.format_loc(LOC_INIT_ENTITY_NOT_FOUND,name=name) + "\n"
                 elif len(possible_res) > 1:  # 多个可能的结果, 提示用户
-                    possible_name = [init_data.find_entity(res).name for res in possible_res]
-                    feedback += self.format_loc(LOC_INIT_ENTITY_VAGUE, name_list=possible_name) + "\n"
+                    possible_name = []
+                    for res in possible_res:
+                        possible_name += [entity.name for entity in init_data.find_entity(res)]
+                    feedback += self.format_loc(LOC_INIT_ENTITY_VAGUE, name_list="\n".join(possible_name)) + "\n"
                 elif len(possible_res) == 1:
                     result_list.append(possible_res[0])
             else: #if match_num > 1:  # 多于一个同名条目, 按设计是不可能出现的, 需要排查原因
