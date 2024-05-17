@@ -35,13 +35,17 @@ def read_xlsx(path: str) -> openpyxl.Workbook:
     """
     读取xlsx, 记得之后手动关闭workbook
     """
-    wb = openpyxl.load_workbook(path)
-    wb_title = path.rsplit("/", maxsplit=1)[-1]
-    wb_title = wb_title.rsplit("\\", maxsplit=1)[-1]
-    wb_title = wb_title.rsplit(".", maxsplit=1)[0]
-    wb.properties.title = wb_title
-    wb.properties.identifier = path
-    return wb
+    try:
+        wb = openpyxl.load_workbook(path)
+        wb_title = path.rsplit("/", maxsplit=1)[-1]
+        wb_title = wb_title.rsplit("\\", maxsplit=1)[-1]
+        wb_title = wb_title.rsplit(".", maxsplit=1)[0]
+        wb.properties.title = wb_title
+        wb.properties.identifier = path
+        return wb
+    except:
+        print(f"读取{path}失败，请检查该文件是否是正确格式的表格文件。")
+        return openpyxl.Workbook()
 
 
 def update_xlsx(workbook: openpyxl.Workbook, path: str) -> None:

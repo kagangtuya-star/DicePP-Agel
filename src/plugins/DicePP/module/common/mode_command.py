@@ -11,6 +11,7 @@ from core.communication import MessageMetaData, PrivateMessagePort, GroupMessage
 from core.config import DATA_PATH
 from module.common import DC_GROUPCONFIG
 from core.localization import LOC_PERMISSION_DENIED_NOTICE, LOC_FUNC_DISABLE
+from utils.localdata import read_xlsx
 
 LOC_MODE_SWITCH = "mode_switch"
 LOC_MODE_INVALID = "mode_invalid"
@@ -60,7 +61,7 @@ class ModeCommand(UserCommandBase):
         # 从本地文件中读取可用模式一览
         data_path = os.path.join(DATA_PATH, MODE_FILE_PATH)
         if os.path.exists(data_path):
-            wb = openpyxl.load_workbook(data_path)
+            wb = read_xlsx(data_path)
             id_list = wb.get_sheet_names()
             if bot_id in id_list:
                 ws = wb.get_sheet_by_name(bot_id)
