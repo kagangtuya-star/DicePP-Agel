@@ -1,5 +1,6 @@
 import abc
 import operator
+import math
 from typing import Dict, Type, Union, Iterable, Tuple, Any
 
 from .formula import *
@@ -7,6 +8,7 @@ from .roll_config import *
 from .roll_utils import RollDiceError, roll_a_dice
 from .result import RollResult
 
+STATIC_KP_DICT: dict = {}
 
 class RollExpModifier(metaclass=abc.ABCMeta):
     """
@@ -317,56 +319,33 @@ class REModMinMax(RollExpModifier):
 
     def expectation(self, roll_res: RollResult) -> RollResult:
         roll_res.exp = f"{roll_res.exp}{self.exp_str}{self.num}"
-        """
-        # 暂时没有更好方法，先限定只能2骰取1
-        if roll_res.dice_num != 2 or self.num != 1:
-            raise RollDiceError(f"暂时不支持处理2骰取1以外的期望")
-        # 抛弃原本的期望，重新计算期望
-        dice_type = max(roll_res.type,1)
-        poss_result_sum: int = 0 # 全部可能性的结果之和
-        poss_num: int = pow(dice_type,2) # 全部可能性的结果之和
-        if self.formula == "MAX":
-            # 取最大值，每个骰值X加起来等同于X(2X-1)
-            for index in range(1,dice_type+1):
-                poss_result_sum += (index * 2 - 1) * index
-        elif self.formula == "MIN":
-            # 取最小值，每个骰值X出现的数量等同于X(2Y-2X+2-1)
-            for index in range(1,dice_type+1):
-                poss_result_sum += (dice_type * 2 - index * 2 + 1) * index
-        roll_res.val_list = [float(poss_result_sum) / poss_num]
-        roll_res.info = str(round(sum(roll_res.val_list),2))
-        """
         if self.formula == "MAX":
             roll_res.val_list = [self.xdykz_exp(roll_res.dice_num,roll_res.type,self.num)]
         elif self.formula == "MIN":
-            roll_res.val_list = [self.xdykz_exp(roll_res.dice_num,roll_res.type,self.num,True)]
+            _m = z*(y + 1)
+            roll_res.val_list = [_m - self.xdykz_exp(roll_res.dice_num,roll_res.type,self.num)]
         roll_res.info = str(round(sum(roll_res.val_list),2))
         return roll_res
     
-    def xdykz_exp(self,x:int,y:int,z:int,anti:bool=False):
-        base_var = (y+1)/2*x # 基础值，即为不在乎Z情况下期望
-        if x == z: # N骰取和
-            result = base_var
-        elif z == 1: # N骰取其一
-            total_r = y ** x # 可能的结果数量
-            total_var = 0 # 总和值
-            pow_var = [pow(i,x) for i in range(0,y+1)] # 乘算值
-            if anti: # 取最小值
-                total_var = sum([
-                    i*(pow_var[y-i+1]-pow_var[y-i])
-                    for i in range(1,y+1)
-                ])
-            else: # 取最大值
-                total_var = sum([
-                    i*(pow_var[i]-pow_var[i-1])
-                    for i in range(1,y+1)
-                ])
-            result = total_var / total_r
-        elif z == x-1: # N骰踢1，倒桩即可
-            result = base_var - self.xdykz_exp(x,y,1,not anti)
-        else: # N骰踢M，最麻烦的情况，没办法，摆烂！
-            raise RollDiceError(f"算不出来——摆烂啦！")
-        return result
+    def xdykz_exp(self,x:int,y:int,z:int):
+        # 算法由神祇读神奇佬提供
+        def p(): #计算出特定一套xyij的p值
+            hash_key = (x,y,i,j)
+            value = 0
+            if hash_key in STATIC_KP_DICT.keys(): # 已经计算过的p值可以直接查表
+                return STATIC_KP_DICT[hash_key]
+            else: # 反之计算一次p值
+                cix = math.prod(range(j+1,x+1)) / math.factorial(x-j)
+                data = ((y-i+1)**j)*((i-1)**(x-j))
+                for _x in range(x):
+                    data /= y
+                return cix * data
+        #计算
+        total = 0
+        for i in range(1,y+1):
+            for j in range(0,z):
+                total += (z-j) * p()
+        return y*z - total
 
     def modify(self, roll_res: RollResult) -> RollResult:
         """

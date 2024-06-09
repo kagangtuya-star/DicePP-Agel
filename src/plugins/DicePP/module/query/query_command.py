@@ -24,6 +24,7 @@ from module.query.query_database import CONNECTED_QUERY_DATABASES, DATABASE_CURS
 
 LOC_QUERY_RESULT = "query_result"
 LOC_QUERY_SINGLE_RESULT = "query_single_result"
+LOC_QUERY_EXTRA_RESULT = "query_extra_result"
 LOC_QUERY_MULTI_RESULT = "query_multi_result"
 LOC_QUERY_MULTI_RESULT_ITEM = "query_multi_result_item"
 LOC_QUERY_MULTI_RESULT_PAGE = "query_multi_result_page"
@@ -47,6 +48,7 @@ MAX_QUERY_KEY_NUM = 5  # 最多能同时用多少个查询关键字
 MAX_QUERY_CANDIDATE_NUM = 10  # 详细查询时一页最多能同时展示多少个条目
 MAX_QUERY_CANDIDATE_SIMPLE_NUM = 30  # 简略查询时一页最多能同时展示多少个条目
 MAX_QUERY_ITEM_NUM = 1000  # 最多能查询多少条目
+MAX_QUERY_DISPLAY_LINE = 30  # 查询时一条消息最多能同时展示多少行
 RECORD_RESPONSE_TIME = 60  # 至多响应多久以前的查询指令, 多余的将被清理, 单位为秒
 RECORD_EDIT_RESPONSE_TIME = 600  # 至多响应多久以前的编辑指令, 多余的将被清理, 单位为秒
 RECORD_CLEAN_FREQ = 50  # 每隔多少次查询指令尝试清理一次查询记录
@@ -60,6 +62,7 @@ class QueryData:
         self.hash_word = self.original_data[0]+"#"+self.original_data[2]+"#"+self.original_data[3]
         self.redirect_by = redirect_by
         self.database = database
+        self.equal_direct_one = False
 
     def data_extend(self):
         self.data_name = self.original_data[0]
@@ -164,9 +167,10 @@ class QueryRecord:
         self.page = 1  # 当前的页数
         self.mode = 0  # 0代表仅显示名称, 1代表显示名称和简单描述
         self.filter_mode = 0  # 0代表直接显示, 1代表分类显示
-
+        
         self.edit_flag = False  # 编辑模式
         self.editing = False  # 编辑中
+        self.edit_showed = []  # 编辑模式下已展示过的内容
         self.edit_new = False  # 新建条目模式
         self.edit_index = -1  # 正在编辑的内容的index
     
@@ -266,6 +270,17 @@ class QueryRecord:
 
     def edit_data(self, input_data: str) -> str:
         data_new: str = input_data.strip()
+        inline_edit: int = -1
+        # 检测特殊格式
+        if data_new.startswith("#"):
+            _right = data_new.find("#",1)
+            if _right != -1:
+                _str = data_new[1:_right]
+                try:
+                    inline_edit = int(_str)
+                    data_new = data_new[_right+1:]
+                except ValueError:
+                    return "格式错误，请重新尝试。"
         if data_new == "-" or not data_new:
             data_new = ""
         else:
@@ -273,11 +288,24 @@ class QueryRecord:
                 data_new = ((data_new.replace("：",":")).replace("（","(")).replace("）",")")
             elif self.edit_index == 6:
                 data_new = data_new.replace("\n","")
+        # 编辑
         if self.edit_index == 0 and data_new == "":
             return "内容不能为空，请重新输入。"
-        self.data[0].set(self.edit_index,data_new)
-        self.edit_index = -1
-        return "编辑完成，您可以根据上表继续您的编辑。"
+        if inline_edit >= 0:
+            data_list = self.data[0].get(self.edit_index).split("\n\n")
+            if inline_edit > len(data_list):
+                data_list.append(data_new)
+            elif data_new == "":
+                del data_list[inline_edit]
+            else:
+                data_list[inline_edit] = data_new
+            self.data[0].set(self.edit_index,"\n\n".join(data_list))
+            self.edit_index = -1
+            return "局部编辑完成，您可以根据上表继续您的编辑。"
+        else:
+            self.data[0].set(self.edit_index,data_new)
+            self.edit_index = -1
+            return "编辑完成，您可以根据上表继续您的编辑。"
 
     def edit_commit(self, database, cursor):
         data = self.data[0]
@@ -287,6 +315,7 @@ class QueryRecord:
             cursor.execute("UPDATE data SET 名称 = ?,英文 = ?,来源 = ?,分类 = ?,标签 = ?,内容 = ? " + data.origin_check(),data.to_tuple())
             # 如果改变了名称，就顺带着改编一下重定向
             if data.data_name != data.original_data[0] and data.original_data[0] != "":
+                cursor.execute("UPDATE redirect SET 名称 = 重定向,重定向 = 名称 WHERE 名称 == ? and 重定向 == ?",(data.data_name,data.original_data[0]))
                 cursor.execute("UPDATE redirect SET 重定向 = ? WHERE 重定向 == ?",(data.data_name,data.original_data[0]))
         database.commit()
     
@@ -328,6 +357,8 @@ class QueryCommand(UserCommandBase):
         reg_loc(LOC_QUERY_SINGLE_RESULT, "{keyword} {en_keyword}{tag}\n{content}{book}{redirect}",
                 "查询找到唯一条目, keyword: 条目名称, en_keyword: 条目英文名, content: 词条内容"
                 ", book: 来源*, redirect: 重定向自*, tag: 换行+标签*  (*如果有则显示, 没有则忽略)")
+        reg_loc(LOC_QUERY_EXTRA_RESULT, "如果这不是你要找的内容，那么以下是一些其他的可能结果：",
+                "查询找到单个匹配条目，但还有多个可能得条目时的文本提示")
         reg_loc(LOC_QUERY_MULTI_RESULT_CATALOGUE, "请选择一个分类",
                 "查询找到多个条目时选择分类的文本提示")
         reg_loc(LOC_QUERY_MULTI_RESULT_PAGE, "{page_cur}/{page_total}页, -上一页/下一页+",
@@ -395,6 +426,10 @@ class QueryCommand(UserCommandBase):
                                 self.record_dict[port].delete(CONNECTED_QUERY_DATABASES[database],DATABASE_CURSOR[database])
                                 del self.record_dict[port]
                                 mode, arg_str = "feedback", "接收到密文，已删除该条目"
+                                should_proc = True
+                            else:
+                                del self.record_dict[port]
+                                mode, arg_str = "feedback", "已取消创建该条目"
                                 should_proc = True
                         else:  # 开始编辑
                             try:
@@ -581,8 +616,7 @@ class QueryCommand(UserCommandBase):
                     else:
                         feedback = self.format_loc(LOC_QUERY_RESULT, result = self.format_items_list_feedback(show_result))
                     if record.length > page_item_num:
-                        feedback += "\n" + self.format_loc(LOC_QUERY_MULTI_RESULT_PAGE, page_cur=1,
-                                                           page_total=record.length // page_item_num + 1)
+                        feedback += "\n" + self.format_loc(LOC_QUERY_MULTI_RESULT_PAGE, page_cur=1,page_total=record.length // page_item_num + 1)
         elif mode == "flip_page":
             record = self.record_dict[source_port]
             next_page = (arg_str == "+")
@@ -590,13 +624,23 @@ class QueryCommand(UserCommandBase):
             self.record_dict[source_port].page = cur_page
         elif mode == "editing":
             try:
-                index: int = int(arg_str)
-                self.record_dict[source_port].edit_index = index
-                feedback = self.record_dict[source_port].data[0].get(index)
-                if not feedback:
-                    feedback = "[原文为空]"
+                edit_index: int = int(arg_str)
+                self.record_dict[source_port].edit_index = edit_index
+                # 展示原文
+                if edit_index not in self.record_dict[source_port].edit_showed:
+                    self.record_dict[source_port].edit_showed.append(edit_index)
+                    feedback = self.record_dict[source_port].data[0].get(edit_index)
+                    if not feedback:
+                        feedback = "[原文为空]"
+                    else:
+                        feedback = feedback.replace("''","'")
+                    # 检测是否为多行内容
+                    if "\n\n" in feedback:
+                        feedbacks = feedback.split("\n\n")
+                        feedback = "\n\n".join([("#"+str(index)+"#"+fd) for index,fd in enumerate(feedbacks)])
+                    feedback += "\n\n请输入修改后的内容："
                 else:
-                    feedback = feedback.replace("''","'")
+                    feedback += "请输入修改后的内容："
             except ValueError:
                 feedback = "编辑失败，未知原因"
                 pass
@@ -771,27 +815,27 @@ class QueryCommand(UserCommandBase):
             self.clean_records()
         
         #分割显示查询结果
-        command = []
+        feedback_command = []
         feedback_superlines = feedback.split("\n\n")
         for superline in feedback_superlines:
             superline_lines = superline.split("\n")
-            if len(superline_lines) >= 20:
-                #command = [self.send_forward_msg_group(self.bot, self.bot.account, meta.group_id, "超长查询", feedback.split("\n\n"))]
+            if len(superline_lines) >= MAX_QUERY_DISPLAY_LINE:
+                #feedback_command = [self.send_forward_msg_group(self.bot, self.bot.account, meta.group_id, "超长查询", feedback.split("\n\n"))]
                 superline_length = len(superline_lines)
-                for index in range(0,math.ceil(superline_length/20)):
+                for index in range(0,math.ceil(superline_length/MAX_QUERY_DISPLAY_LINE)):
                     content: str = ""
                     if (index + 1) * QUERY_SPLIT_LINE_LEN >= superline_length:
                         content = "\n".join(superline_lines[index*QUERY_SPLIT_LINE_LEN:superline_length])
                     else:
                         content = "\n".join(superline_lines[index*QUERY_SPLIT_LINE_LEN:(index + 1)*QUERY_SPLIT_LINE_LEN])
                     if len(content) > 0:
-                        command.append(content)
+                        feedback_command.append(content)
             elif len(superline) > 0:
-                command.append(superline)
-        if len(command) >= 4:
-            return [BotSendForwardMsgCommand(self.bot.account, "查询系统", command, [port])]
-        elif len(command) >= 1:
-            return [BotSendMsgCommand(self.bot.account, line, [port]) for line in command]
+                feedback_command.append(superline)
+        if len(feedback_command) >= 4:
+            return [BotSendForwardMsgCommand(self.bot.account, "查询系统", feedback_command, [port])]
+        elif len(feedback_command) >= 1:
+            return [BotSendMsgCommand(self.bot.account, line, [port]) for line in feedback_command]
         else:
             return []
 
@@ -851,8 +895,34 @@ class QueryCommand(UserCommandBase):
                 feedback = self.record_dict[port].choose_edit_target(0)
             else:
                 feedback = self.query_feedback(database,homebrew_database,poss_result[0],port)
+        elif poss_result[0].equal_direct_one: # 找到多个结果，不过有唯一匹配者, 记录当前信息并提示用户选择
+            if edit_flag:
+                self.record_dict[port] = QueryRecord(poss_result, database, get_current_date_raw(), poss_result_num)
+                self.record_dict[port].show_mode = show_mode
+                self.record_dict[port].edit_flag = edit_flag
+                feedback = self.record_dict[port].choose_edit_target(0)
+            else:
+                if port in self.record_dict.keys():
+                    del self.record_dict[port]
+                feedback = self.query_feedback(database,homebrew_database,poss_result[0],port)
+                # 如果没有二级查询，就显示其他可能
+                if port not in self.record_dict.keys():
+                    # 记录剩下的信息以备将来查询（不进行分类）
+                    self.record_dict[port] = QueryRecord(poss_result[1:], database, get_current_date_raw(), poss_result_num)
+                    self.record_dict[port].show_mode = show_mode
+                    self.record_dict[port].edit_flag = edit_flag
+                    page_item_num = MAX_QUERY_CANDIDATE_NUM if show_mode != 0 else MAX_QUERY_CANDIDATE_SIMPLE_NUM
+
+                    # 在最后另起一行显示结果
+                    feedback += "\n\n"+self.format_loc(LOC_QUERY_EXTRA_RESULT)+"\n"
+                    show_result: List[QueryData] = poss_result[1:page_item_num]
+                    feedback += self.format_items_list_feedback(show_result)
+                    if poss_result_num > page_item_num:
+                        feedback += "\n" + self.format_loc(LOC_QUERY_MULTI_RESULT_PAGE, page_cur=1,page_total=poss_result_num // page_item_num + 1)
         else:  # len(poss_result) > 1  找到多个结果, 记录当前信息并提示用户选择
-            # 记录当前信息以备将来查询或编辑
+            if port in self.record_dict.keys():
+                del self.record_dict[port]
+            # 记录当前信息以备将来查询或编辑（若过长就进行分类）
             self.record_dict[port] = QueryRecord(poss_result, database, get_current_date_raw(), poss_result_num)
             self.record_dict[port].show_mode = show_mode
             self.record_dict[port].edit_flag = edit_flag
@@ -860,24 +930,23 @@ class QueryCommand(UserCommandBase):
             filter_mode: int = 1 if (poss_result_num >= page_item_num) else 0
             self.record_dict[port].filter_mode = filter_mode
             
-            #处理分类
+            # 处理分类
             if self.record_dict[port].filter_mode == 1:
                 self.record_dict[port].create_catalogue_list()
             else:
                 self.record_dict[port].process_data()
-            #以分类模式显示结果
+            # 以分类模式显示结果
             if self.record_dict[port].filter_mode == 1:
                 show_result: List[QueryData] = []
                 for key,num in self.record_dict[port].catalogue_list.items():
                     show_result.append(key + " (" + str(num) + ")")
                 feedback = self.format_loc(LOC_QUERY_MULTI_RESULT_CATALOGUE) + "\n" + self.format_catalogues_list_feedback(show_result)
-            #直接显示结果
+            # 直接显示结果
             else:
                 show_result: List[QueryData] = poss_result[:page_item_num]
                 feedback = self.format_items_list_feedback(show_result)
                 if poss_result_num > page_item_num:
-                    feedback += "\n" + self.format_loc(LOC_QUERY_MULTI_RESULT_PAGE, page_cur=1,
-                                                       page_total=poss_result_num // page_item_num + 1)
+                    feedback += "\n" + self.format_loc(LOC_QUERY_MULTI_RESULT_PAGE, page_cur=1,page_total=poss_result_num // page_item_num + 1)
         return feedback
     
     def command_split(self,keywords: str) -> List[str]:
@@ -946,102 +1015,6 @@ class QueryCommand(UserCommandBase):
         
         return poss_result
 
-    '''
-    def search_item(self,database: str, query_command_list: List[str], search_mode: int = 0) -> List[QueryData]:
-        """
-        搜索合规的对象
-        """
-        sql_search_command: str = "Select {0} From {1} Where ".format(QUERY_DATA_FIELD, "data")
-        sql_redirect_command: str = "Select {0} From {1} Where ".format(QUERY_REDIRECT_FIELD, "redirect")
-        query_sqlcur = DATABASE_CURSOR[database]
-        cursor: sqlite3.Cursor
-        query_result: List[QueryData] = []
-        result_length: int = 0
-        # 分割查询指令
-        name: str = ""
-        condition_list: List[str] = []
-        redirect_name_list: List[str] = []
-        redirect_condition_list: List[str] = []
-        for query_command in query_command_list:
-            command_list = [command for command in query_command.split("/")]
-            func = ""
-            # 预处理指令
-            if len(command_list) > 0:
-                if len(command_list[0]) == 0:
-                    command_list = [query_command]
-                    continue
-                elif command_list[0][0] in ("#","&"):
-                    func = query_command[0]
-                    command_list[0] = command_list[0][1:]
-            # 添加条件指令
-            if len(command_list) > 0:
-                if func == "#":
-                    cmd = self.generate_search_sql_regexp(command_list,"lower(replace(replace(来源 || '#' || 分类 || '#' || 标签,' ','#'),x'0A','|'))")
-                    condition_list.append(cmd)
-                    redirect_condition_list.append(cmd)
-                elif func == "&":
-                    cmd = self.generate_search_sql_in(command_list,"分类")
-                    condition_list.append(cmd)
-                    redirect_condition_list.append(cmd)
-                else:
-                    if search_mode == 0:
-                        condition_list.append(self.generate_search_sql_regexp(command_list,"lower(replace(replace(名称 || '#' || 英文,' ','#'),x'0A','|'))"))
-                        redirect_name_list.append(self.generate_search_sql_regexp(command_list,"名称"))
-                        name = name + "".join(command_list)
-                    else:
-                        condition_list.append(self.generate_search_sql_regexp(command_list,"lower(replace(replace(名称 || 英文 || 来源 || 分类 || 标签 || 内容,' ',''),x'0A','|'))"))
-                        redirect_name_list.append(self.generate_search_sql_regexp(command_list,"名称"))
-        # 正常查询
-        if len(condition_list) > 0:
-            sql_condition = sql_search_command + " AND ".join(condition_list)
-            # print(sql_condition)
-            cursor = query_sqlcur.execute(sql_condition)
-            for _data in cursor:
-                query_result.append(QueryData(_data))
-                result_length += 1
-                if result_length > MAX_QUERY_ITEM_NUM:
-                    raise QueryError("匹配条目过多，无法查询")
-        # 处理重定向
-        if len(redirect_name_list) > 0:
-            redirect_result: List[Tuple[str]] = []
-            sql_condition = sql_redirect_command + " AND ".join(redirect_name_list)
-            cursor = query_sqlcur.execute(sql_condition)
-            for _data in cursor:
-                redirect_result.append(_data)
-            if len(redirect_condition_list) > 0:
-                sql_condition = " AND " + " AND ".join(redirect_condition_list)
-            else:
-                sql_condition = ""
-            for _redirect in redirect_result:
-                cursor = query_sqlcur.execute(sql_search_command + " 名称 = '" + _redirect[1].replace("'","''") + "'"+ sql_condition)
-                for _data in cursor:
-                    query_result.append(QueryData(_data,_redirect[0]))
-                    result_length += 1
-                    if result_length > MAX_QUERY_ITEM_NUM:
-                        raise QueryError("匹配条目过多，无法查询")
-        # 去除重复的条目，并寻找直接确认者,或者同名确认者
-        dupe_list: List[str] = []
-        new_query_result: List[QueryData] = []
-        found_equal: bool = False
-        for query_data in query_result:
-            if query_data.original_data[0] == name and name != "":
-                if not found_equal:
-                    dupe_list.clear()
-                    new_query_result.clear()
-                if query_data.hash_word not in dupe_list:
-                    dupe_list.append(query_data.hash_word)
-                    new_query_result.append(query_data)
-                found_equal = True
-            elif not found_equal:
-                if query_data.hash_word not in dupe_list:
-                    dupe_list.append(query_data.hash_word)
-                    new_query_result.append(query_data)
-        # 生成额外数据供使用
-        for query_data in query_result:
-            query_data.data_extend()
-        # 查询结束
-        return new_query_result
-    '''
     def search_item(self,database: str, query_command_list: List[str], search_mode: int = 0) -> List[QueryData]:
         """
         搜索合规的对象
@@ -1153,37 +1126,32 @@ class QueryCommand(UserCommandBase):
                             result_length += 1
                             if result_length > MAX_QUERY_ITEM_NUM:
                                 raise QueryError("匹配条目过多，无法查询")
-        # 去除重复的条目，并寻找直接确认者,或者同名确认者
-        dupe_list: List[str] = []
-        new_query_result: List[QueryData] = []
-        found_equal: bool = False
+        # 去除重复的条目，并寻找直接确认者/同名确认者，将其提至最前
+        query_hash_list: List[str] = []
+        normal_query_result: List[QueryData] = []
+        equal_query_result: List[QueryData] = []
         for query_data in query_result:
-            if can_single_query:
-                if complete_name != "" and query_data.original_data[0] == complete_name:
-                    if not found_equal:
-                        dupe_list.clear()
-                        new_query_result.clear()
-                    found_equal = True
-                    if query_data.hash_word not in dupe_list:
-                        dupe_list.append(query_data.hash_word)
-                        new_query_result.append(query_data)
-                elif complete_name_en != "" and query_data.original_data[0].lower() == complete_name_en:
-                    if not found_equal:
-                        dupe_list.clear()
-                        new_query_result.clear()
-                    found_equal = True
-                    if query_data.hash_word not in dupe_list:
-                        dupe_list.append(query_data.hash_word)
-                        new_query_result.append(query_data)
-            if not found_equal:
-                if query_data.hash_word not in dupe_list:
-                    dupe_list.append(query_data.hash_word)
-                    new_query_result.append(query_data)
-        # 生成额外数据供使用
-        for query_data in query_result:
+            equal: bool = False
+            if can_single_query: # 允许单条查询的话
+                if complete_name and query_data.original_data[0] == complete_name: # 中文直接匹配
+                    equal = True
+                elif complete_name_en and query_data.original_data[0].lower() == complete_name_en: # 英文文直接匹配
+                    equal = True
+            if query_data.hash_word not in query_hash_list:
+                query_hash_list.append(query_data.hash_word)
+                if equal:
+                    equal_query_result.append(query_data)
+                else:
+                    normal_query_result.append(query_data)
+        if len(equal_query_result) == 1: # 找到唯一匹配结果
+            equal_query_result[0].equal_direct_one = True
+        # 生成额外数据供其他代码使用
+        for query_data in normal_query_result:
+            query_data.data_extend()
+        for query_data in equal_query_result:
             query_data.data_extend()
         # 查询结束
-        return new_query_result
+        return equal_query_result + normal_query_result # 全等优先，然后是普通
 
     def query_feedback(self, database: str, homebrew_database: str, item: QueryData, port: MessagePort) -> str:
         """
@@ -1246,6 +1214,9 @@ class QueryCommand(UserCommandBase):
         return self.format_item_feedback(item)
 
     def generate_search_conditions(self, condition_list: Dict[tuple,List[List[str]]]) -> str:
+        """
+        生成搜索的WHERE条件式
+        """
         results = []
         for key_list in condition_list.keys():
             if len(condition_list[key_list]) != 0:
@@ -1264,7 +1235,9 @@ class QueryCommand(UserCommandBase):
         return " AND ".join(results)
     
     def generate_search_sql_regexp(self, command_list: List[str], prefix: str = "名称") -> str:
-        # 生成正则表达式的condition
+        """
+        生成正则表达式的condition
+        """
         result: List[str] = []
         for command in command_list:
             if command.startswith("-") and len(command) > 1:
@@ -1276,7 +1249,9 @@ class QueryCommand(UserCommandBase):
         return prefix + " regexp '" + "|".join(result) + "'"
     
     def generate_search_sql_in(self, command_list: List[str], prefix: str = "来源") -> str:
-        # 生成列表中检测的condition
+        """
+        生成列表检测的condition
+        """
         result: str = ""
         words: List[str] = []
         anti_words: List[str] = []
@@ -1293,14 +1268,6 @@ class QueryCommand(UserCommandBase):
         return result
 
     def format_item_feedback(self, item: QueryData) -> str:
-        # 最基本的单条目返回文本
-        item_content = item.data_content if item.data_content else "[内容为空，等待热心小编补充]"
-        item_tag = "\n" + item.data_tag if (item.data_tag and not item.data_tag.startswith("/")) else ""
-        item_book = self.format_loc(LOC_QUERY_CELL_BOOK, book=item.data_from) if item.data_from else ""
-        item_redirect = self.format_loc(LOC_QUERY_CELL_REDIRECT, redirect=item.redirect_by) if item.redirect_by else ""
-        return self.format_loc(LOC_QUERY_SINGLE_RESULT, keyword=item.data_name, en_keyword=item.data_name_en, content=item_content, tag=item_tag, book=item_book, redirect=item_redirect)
-
-    def format_item_redirects_feedback(self, item: QueryData) -> str:
         # 最基本的单条目返回文本
         item_content = item.data_content if item.data_content else "[内容为空，等待热心小编补充]"
         item_tag = "\n" + item.data_tag if (item.data_tag and not item.data_tag.startswith("/")) else ""
